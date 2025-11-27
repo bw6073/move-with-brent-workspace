@@ -1,0 +1,65 @@
+/* ===== Print / PDF styles ===== */
+@media print {
+  /* Clean white background */
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  /* Hide chrome/nav/buttons/etc marked as no-print */
+  header,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Let the main content use the full width */
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  /* Remove shadow/border from the summary card */
+  .summary-page {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+  }
+}
+/* -------- PRINT STYLES -------- */
+
+@media print {
+  /* Use A4 with sensible margins */
+  @page {
+    size: A4;
+    margin: 16mm;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
+
+  /* Hide things we don't want on the PDF */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Let the summary stretch full width for print */
+  .print-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  /* Remove shadows and borders that look odd on PDF */
+  .print-card {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none;
+  }
+}
