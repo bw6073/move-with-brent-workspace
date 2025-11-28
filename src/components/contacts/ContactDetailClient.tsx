@@ -10,6 +10,7 @@ import { ContactNotesCard } from "./ContactNotesCard";
 import { ContactActivityCard } from "./ContactActivityCard";
 import { ContactTasksCard } from "./ContactTasksCard";
 import { ContactTimelineCard } from "./ContactTimelineCard";
+import { ContactLinkedContactsCard } from "./ContactLinkedContactsCard";
 
 type Props = {
   initialContact: Contact;
@@ -21,7 +22,13 @@ const getDisplayName = (c: Contact): string =>
   [c.first_name, c.last_name].filter(Boolean).join(" ") ||
   "Unnamed contact";
 
-type RightTab = "timeline" | "activity" | "appraisals" | "tasks" | "notes";
+type RightTab =
+  | "timeline"
+  | "activity"
+  | "appraisals"
+  | "tasks"
+  | "notes"
+  | "linked";
 
 const formatDate = (iso: string | null | undefined): string => {
   if (!iso) return "—";
@@ -245,7 +252,7 @@ export default function ContactDetailClient({ initialContact }: Props) {
           )}
         </section>
 
-        {/* RIGHT: tabbed panel – timeline / tasks / activity / appraisals / notes */}
+        {/* RIGHT: tabbed panel – timeline / tasks / activity / appraisals / notes / linked */}
         <section className="space-y-3">
           {/* Tabs */}
           <div className="flex flex-wrap gap-1 text-xs">
@@ -255,6 +262,7 @@ export default function ContactDetailClient({ initialContact }: Props) {
               { id: "activity", label: "Activity" },
               { id: "appraisals", label: "Appraisals" },
               { id: "notes", label: "Notes" },
+              { id: "linked", label: "Linked contacts" },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -292,6 +300,10 @@ export default function ContactDetailClient({ initialContact }: Props) {
 
             {activeTab === "notes" && (
               <ContactNotesCard contactId={contact.id} />
+            )}
+
+            {activeTab === "linked" && (
+              <ContactLinkedContactsCard contactId={contact.id} />
             )}
           </div>
         </section>
