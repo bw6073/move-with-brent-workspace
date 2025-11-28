@@ -9,6 +9,9 @@ type HomeTaskRow = {
   status: string | null;
   priority: string | null;
   due_date: string | null;
+  related_contact_id: number | null;
+  related_property_id: number | null;
+  created_at: string | null;
 };
 
 type HomeAppraisalRow = {
@@ -50,26 +53,78 @@ const formatCreated = (iso: string | null) => {
   });
 };
 
+const statusBadgeClass = (status: string | null) => {
+  if (status === "completed") return "bg-emerald-100 text-emerald-700";
+  return "bg-slate-100 text-slate-700";
+};
+
+const linkPill = (t: HomeTaskRow) => {
+  if (t.related_contact_id) {
+    return (
+      <Link
+        href={`/contacts/${t.related_contact_id}`}
+        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 max-w-[160px] truncate"
+      >
+        👤 Contact #{t.related_contact_id}
+      </Link>
+    );
+  }
+
+  if (t.related_property_id) {
+    return (
+      <Link
+        href={`/properties/${t.related_property_id}`}
+        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 max-w-[200px] truncate"
+      >
+        🏡 Property #{t.related_property_id}
+      </Link>
+    );
+  }
+
+  return (
+    <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-400">
+      Not linked
+    </span>
+  );
+};
+
 export default async function HomePage() {
   const { user, supabase } = await requireUser();
 
-  // ───────────────── TASKS SNAPSHOT (from `tasks`) ─────────────────
-  const { data: taskData } = await supabase
+  // ───────────────── TASKS SNAPSHOT ─────────────────
+  const { data: taskData, error: taskError } = await supabase
     .from("tasks")
-    .select("id, title, status, priority, due_date, user_id")
-    // include rows where user_id is null (old data) or matches you
-    .or(`user_id.eq.${user.id},user_id.is.null`)
+    .select(
+      `
+      id,
+      title,
+      status,
+      priority,
+      due_date,
+      related_contact_id,
+      related_property_id,
+      created_at
+    `
+    )
+    .eq("user_id", user.id)
     .in("status", ["pending", "in_progress"])
     .order("due_date", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true })
     .limit(20);
 
-  const tasks: HomeTaskRow[] = (taskData ?? []).map((row: any) => ({
+  if (taskError) {
+    console.error("[HomePage] tasks error", taskError);
+  }
+
+  const allTasks: HomeTaskRow[] = (taskData ?? []).map((row: any) => ({
     id: row.id,
     title: row.title ?? "Untitled task",
     status: row.status ?? "pending",
     priority: row.priority ?? "normal",
     due_date: row.due_date ?? null,
+    related_contact_id: row.related_contact_id ?? null,
+    related_property_id: row.related_property_id ?? null,
+    created_at: row.created_at ?? null,
   }));
 
   const todayStart = new Date();
@@ -77,13 +132,13 @@ export default async function HomePage() {
   const todayEnd = new Date();
   todayEnd.setHours(23, 59, 59, 999);
 
-  let openCount = tasks.length;
+  let openCount = allTasks.length;
   let overdueCount = 0;
   let todayCount = 0;
   let upcomingCount = 0;
   let noDueCount = 0;
 
-  for (const t of tasks) {
+  for (const t of allTasks) {
     if (!t.due_date) {
       noDueCount++;
       continue;
@@ -105,10 +160,12 @@ export default async function HomePage() {
     }
   }
 
+  const tasks = allTasks.slice(0, 10);
+
   // ───────────────── RECENT APPRAISALS ─────────────────
   const { data: appraisalData } = await supabase
     .from("appraisals")
-    .select("*") // safe with any schema
+    .select("*")
     .or(`user_id.eq.${user.id},user_id.is.null`)
     .order("created_at", { ascending: false })
     .limit(5);
@@ -140,7 +197,7 @@ export default async function HomePage() {
   // ───────────────── RECENT CONTACTS ─────────────────
   const { data: contactData } = await supabase
     .from("contacts")
-    .select("*") // don’t assume full_name exists
+    .select("*")
     .or(`user_id.eq.${user.id},user_id.is.null`)
     .order("created_at", { ascending: false })
     .limit(5);
@@ -278,7 +335,7 @@ export default async function HomePage() {
 
             <div className="flex items-center gap-2">
               <Link
-                href="/tasks?new=1"
+                href="/tasks/new"
                 className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
               >
                 + New task
@@ -308,20 +365,29 @@ export default async function HomePage() {
                     new Date().setHours(0, 0, 0, 0);
 
                 return (
-                  <li key={t.id} className="flex justify-between py-2">
-                    <div className="min-w-0">
+                  <li
+                    key={t.id}
+                    className="flex items-start justify-between gap-3 py-2"
+                  >
+                    <div className="min-w-0 space-y-1">
                       <div className="truncate font-medium text-slate-900">
-                        {t.title}
+                        <Link
+                          href={`/tasks/${t.id}/edit`}
+                          className="hover:underline"
+                        >
+                          {t.title}
+                        </Link>
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        {linkPill(t)}
                       </div>
                     </div>
 
                     <div className="ml-3 flex flex-col items-end gap-1">
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                          t.status === "completed"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-100 text-slate-700"
-                        }`}
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${statusBadgeClass(
+                          t.status
+                        )}`}
                       >
                         {t.status}
                       </span>

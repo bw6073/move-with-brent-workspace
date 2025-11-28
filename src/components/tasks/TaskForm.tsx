@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export type TaskFormProps = {
   mode: "create" | "edit";
@@ -13,8 +14,9 @@ export type TaskFormProps = {
     due_date?: string | null; // ISO or date string
     status?: string | null;
     related_property_id?: number | null;
+    related_contact_id?: number | null;
     priority?: string | null;
-    task_type?: string | null; // 👈 add this
+    task_type?: string | null;
   } | null;
   /** Optional property to link this task to */
   propertyId?: number | null;
@@ -28,6 +30,7 @@ type FormState = {
   priority: string;
   task_type: string;
   related_property_id: number | null;
+  related_contact_id: number | null;
 };
 
 const STATUS_OPTIONS = [
@@ -70,6 +73,7 @@ export default function TaskForm({
         typeof propertyId === "number"
           ? propertyId
           : initialValues?.related_property_id ?? null,
+      related_contact_id: initialValues?.related_contact_id ?? null,
     };
   });
 
@@ -80,15 +84,19 @@ export default function TaskForm({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const navigateAfterChange = (linkedPropertyId: number | null) => {
-    const redirectPropertyId =
-      linkedPropertyId ?? (typeof propertyId === "number" ? propertyId : null);
-
-    if (redirectPropertyId) {
-      router.push(`/properties/${redirectPropertyId}`);
-    } else {
-      router.push("/tasks");
+  const navigateAfterChange = (
+    linkedPropertyId: number | null,
+    linkedContactId: number | null
+  ) => {
+    if (linkedPropertyId) {
+      router.push(`/properties/${linkedPropertyId}`);
+      return;
     }
+    if (linkedContactId) {
+      router.push(`/contacts/${linkedContactId}`);
+      return;
+    }
+    router.push("/tasks");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -112,6 +120,7 @@ export default function TaskForm({
         priority: form.priority,
         task_type: form.task_type,
         related_property_id: form.related_property_id ?? null,
+        related_contact_id: form.related_contact_id ?? null,
         due_date: form.due_date || null, // "YYYY-MM-DD" or null
       };
 
@@ -136,7 +145,7 @@ export default function TaskForm({
       const json = await res.json().catch(() => ({} as any));
       console.log("Task saved:", json);
 
-      navigateAfterChange(form.related_property_id);
+      navigateAfterChange(form.related_property_id, form.related_contact_id);
     } catch (err) {
       console.error("Unexpected task save error:", err);
       setError("Unexpected error while saving the task.");
@@ -173,7 +182,7 @@ export default function TaskForm({
 
       setForm((prev) => ({ ...prev, status: "completed" }));
 
-      navigateAfterChange(form.related_property_id);
+      navigateAfterChange(form.related_property_id, form.related_contact_id);
     } catch (err) {
       console.error("Unexpected task complete error:", err);
       setError("Unexpected error while marking the task complete.");
@@ -205,12 +214,48 @@ export default function TaskForm({
         return;
       }
 
-      navigateAfterChange(form.related_property_id);
+      navigateAfterChange(form.related_property_id, form.related_contact_id);
     } catch (err) {
       console.error("Unexpected task delete error:", err);
       setError("Unexpected error while deleting the task.");
       setDeleteLoading(false);
     }
+  };
+
+  const renderLinkedTo = () => {
+    if (form.related_property_id) {
+      return (
+        <p className="mt-1 text-xs text-slate-500">
+          Linked to{" "}
+          <Link
+            href={`/properties/${form.related_property_id}`}
+            className="font-semibold text-slate-900 underline-offset-2 hover:underline"
+          >
+            property #{form.related_property_id}
+          </Link>
+        </p>
+      );
+    }
+
+    if (form.related_contact_id) {
+      return (
+        <p className="mt-1 text-xs text-slate-500">
+          Linked to{" "}
+          <Link
+            href={`/contacts/${form.related_contact_id}`}
+            className="font-semibold text-slate-900 underline-offset-2 hover:underline"
+          >
+            contact #{form.related_contact_id}
+          </Link>
+        </p>
+      );
+    }
+
+    return (
+      <p className="mt-1 text-xs text-slate-400">
+        Not currently linked to a contact or property.
+      </p>
+    );
   };
 
   return (
@@ -222,11 +267,7 @@ export default function TaskForm({
         <h1 className="text-lg font-semibold text-slate-900">
           {mode === "create" ? "New task" : "Edit task"}
         </h1>
-        {form.related_property_id && (
-          <p className="mt-1 text-xs text-slate-500">
-            Linked to property ID: {form.related_property_id}
-          </p>
-        )}
+        {renderLinkedTo()}
       </div>
 
       {error && (
@@ -263,9 +304,9 @@ export default function TaskForm({
         />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-4">
         {/* Due date */}
-        <div>
+        <div className="sm:col-span-1">
           <label className="block text-xs font-medium text-slate-600">
             Due date
           </label>
@@ -278,7 +319,7 @@ export default function TaskForm({
         </div>
 
         {/* Status */}
-        <div>
+        <div className="sm:col-span-1">
           <label className="block text-xs font-medium text-slate-600">
             Status
           </label>
@@ -296,7 +337,7 @@ export default function TaskForm({
         </div>
 
         {/* Priority */}
-        <div>
+        <div className="sm:col-span-1">
           <label className="block text-xs font-medium text-slate-600">
             Priority
           </label>
@@ -314,7 +355,7 @@ export default function TaskForm({
         </div>
 
         {/* Task Type */}
-        <div>
+        <div className="sm:col-span-1">
           <label className="block text-xs font-medium text-slate-600">
             Task type
           </label>
@@ -367,7 +408,8 @@ export default function TaskForm({
         </div>
 
         <p className="text-xs text-slate-500">
-          Tasks linked to a property will appear in that property’s side panel.
+          Tasks linked to a contact or property will appear on that record’s
+          panel.
         </p>
       </div>
     </form>

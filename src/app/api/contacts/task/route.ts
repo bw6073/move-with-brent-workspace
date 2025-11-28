@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 
-type RouteContext =
-  | { params: { id: string } }
-  | { params: Promise<{ id: string }> };
-
-export async function GET(_req: Request, context: RouteContext) {
+export async function GET(req: Request) {
   try {
-    // Handle both plain object and Promise (Next 16 sometimes wraps params)
-    const params =
-      "then" in context.params ? await context.params : context.params;
+    const { searchParams } = new URL(req.url);
+    const contactIdParam = searchParams.get("contactId");
 
-    const idParam = params.id;
+    if (!contactIdParam) {
+      return NextResponse.json(
+        { error: "Missing contactId", tasks: [] },
+        { status: 400 }
+      );
+    }
 
-    const contactId = Number(idParam);
+    const contactId = Number(contactIdParam);
     if (!Number.isFinite(contactId) || contactId <= 0) {
       return NextResponse.json(
-        { error: "Invalid contact id", tasks: [] },
+        { error: "Invalid contactId", tasks: [] },
         { status: 400 }
       );
     }
@@ -45,7 +45,7 @@ export async function GET(_req: Request, context: RouteContext) {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("[api/contacts/[id]/tasks] Supabase error:", error);
+      console.error("[api/contacts/tasks] Supabase error:", error);
       return NextResponse.json(
         { error: "Failed to load tasks", tasks: [] },
         { status: 500 }
@@ -54,7 +54,7 @@ export async function GET(_req: Request, context: RouteContext) {
 
     return NextResponse.json({ tasks: data ?? [] });
   } catch (err) {
-    console.error("[api/contacts/[id]/tasks] Unexpected error:", err);
+    console.error("[api/contacts/tasks] Unexpected error:", err);
     return NextResponse.json(
       { error: "Unexpected server error", tasks: [] },
       { status: 500 }

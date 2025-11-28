@@ -1,24 +1,22 @@
+// src/app/layout.tsx
+import type { Metadata } from "next";
 import "./globals.css";
-import React from "react";
-import { createClient } from "@/lib/supabase/server";
-import { MainLayout } from "@/components/layout/MainLayout";
+import { AppShell } from "@/components/layout/AppShell";
 
-export default async function RootLayout({
+export const metadata: Metadata = {
+  title: "Move With Brent – CRM",
+  description: "Brent's internal workspace",
+};
+
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const userEmail = user?.email ?? null;
-
   return (
     <html lang="en">
-      <body className="bg-slate-50">
-        <MainLayout userEmail={userEmail}>{children}</MainLayout>
+      <body>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
