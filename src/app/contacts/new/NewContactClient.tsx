@@ -1,17 +1,17 @@
+// app/contacts/new/NewContactClient.tsx
 "use client";
 
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
 
-type NewContactClientProps = {
-  propertyId: number | null;
-};
-
-export function NewContactClient({ propertyId }: NewContactClientProps) {
+export function NewContactClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const propertyIdParam = searchParams.get("propertyId");
+  const propertyId = propertyIdParam ? Number(propertyIdParam) : null;
 
   const [name, setName] = useState("");
   const [preferredName, setPreferredName] = useState("");
