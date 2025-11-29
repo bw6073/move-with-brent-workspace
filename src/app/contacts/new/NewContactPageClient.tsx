@@ -36,7 +36,6 @@ export default function NewContactPageClient() {
       return;
     }
 
-    // 1) Insert contact
     const { data: contact, error: contactError } = await supabase
       .from("contacts")
       .insert({
@@ -57,7 +56,6 @@ export default function NewContactPageClient() {
       return;
     }
 
-    // 2) If propertyId present, link contact to that property
     if (propertyId && !Number.isNaN(propertyId)) {
       const { error: linkError } = await supabase
         .from("property_contacts")
@@ -65,16 +63,14 @@ export default function NewContactPageClient() {
           user_id: user.id,
           property_id: propertyId,
           contact_id: contact.id,
-          role: "owner", // default – you can adjust later
+          role: "owner",
         });
 
       if (linkError) {
         console.error("Failed to auto-link contact to property:", linkError);
-        // Don't block redirect – but let you know something went wrong
       }
     }
 
-    // 3) Redirect
     if (propertyId && !Number.isNaN(propertyId)) {
       router.push(`/properties/${propertyId}`);
     } else {

@@ -1,4 +1,3 @@
-// src/app/contacts/new/page.tsx
 import { Suspense } from "react";
 import NewContactPageClient from "./NewContactPageClient";
 
