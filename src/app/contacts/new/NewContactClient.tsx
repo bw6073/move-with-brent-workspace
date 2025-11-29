@@ -1,4 +1,4 @@
-// app/contacts/new/NewContactClient.tsx
+// src/app/contacts/new/NewContactPageClient.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
 
-export function NewContactClient() {
+export default function NewContactPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const propertyIdParam = searchParams.get("propertyId");
