@@ -36,6 +36,7 @@ export default function NewContactPageClient() {
       return;
     }
 
+    // 1) Insert contact
     const { data: contact, error: contactError } = await supabase
       .from("contacts")
       .insert({
@@ -56,6 +57,7 @@ export default function NewContactPageClient() {
       return;
     }
 
+    // 2) If propertyId present, link contact to that property
     if (propertyId && !Number.isNaN(propertyId)) {
       const { error: linkError } = await supabase
         .from("property_contacts")
@@ -71,6 +73,7 @@ export default function NewContactPageClient() {
       }
     }
 
+    // 3) Redirect
     if (propertyId && !Number.isNaN(propertyId)) {
       router.push(`/properties/${propertyId}`);
     } else {
