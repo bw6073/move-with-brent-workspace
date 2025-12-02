@@ -223,13 +223,15 @@ export default async function HomePage() {
   return (
     <div className="space-y-8">
       {/* HEADER */}
-      <header>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          Move With Brent – Workspace
-        </h1>
-        <p className="text-slate-600">
-          Quick access to your core tools and today&apos;s priorities.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">
+            Move With Brent – Workspace
+          </h1>
+          <p className="text-slate-600">
+            Quick access to your core tools and today&apos;s priorities.
+          </p>
+        </div>
       </header>
 
       {/* QUICK NAV CARDS */}

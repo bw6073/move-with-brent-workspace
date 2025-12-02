@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 
 type Props = {
   children: React.ReactNode;
@@ -119,16 +120,12 @@ export const AppShell: React.FC<Props> = ({ children }) => {
       {/* MAIN AREA */}
       <div className="flex min-h-screen flex-1 flex-col">
         {/* Mobile/iPad header toggle if you want it too */}
-        <header className="flex h-12 items-center gap-2 border-b border-slate-200 bg-white px-3 lg:px-4">
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 lg:hidden"
-            title={collapsed ? "Expand menu" : "Collapse menu"}
-          >
-            ☰
-          </button>
-          <span className="text-sm font-medium text-slate-800">Workspace</span>
+        <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">CRM</h1>
+          </div>
+
+          <LogoutButton />
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
