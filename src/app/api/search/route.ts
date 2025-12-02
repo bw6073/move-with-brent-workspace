@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get("q") || "").trim();
 
-    // Require at least 2 characters to reduce noise
+    // Require at least 2 characters
     if (!q || q.length < 2) {
       return NextResponse.json({
         contacts: [],
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Get current user for RLS
+    // Current user (RLS relies on this)
     const {
       data: { user },
       error: userError,
@@ -44,11 +44,8 @@ export async function GET(req: NextRequest) {
         phone_mobile,
         street_address,
         suburb,
-        state,
         postcode,
-        notes,
-        created_at,
-        updated_at
+        notes
       `
       )
       .eq("user_id", user.id)
@@ -70,10 +67,8 @@ export async function GET(req: NextRequest) {
       .limit(10);
 
     if (contactError) {
-      console.error(
-        "[/api/search] contacts error:",
-        JSON.stringify(contactError, null, 2)
-      );
+      // Silent fail for contacts; just return empty array if it breaks
+      console.error("[/api/search] contacts error:", contactError);
     }
 
     const contacts =
@@ -94,48 +89,52 @@ export async function GET(req: NextRequest) {
           id: c.id,
           displayName,
           subtitle,
-          kind: "contact" as const,
         };
       }) ?? [];
 
     // ─────────────────────────────────────────
-    // 2) APPRAISALS – search ALL relevant text
+    // 2) APPRAISALS
     // ─────────────────────────────────────────
     const { data: appraisalData, error: appraisalError } = await supabase
       .from("appraisals")
       .select(
         `
-      id,
-      status,
-      created_at,
-      data
-    `
+        id,
+        title,
+        address,
+        suburb,
+        postcode,
+        state,
+        status,
+        data,
+        notes,
+        created_at
+      `
       )
       .eq("user_id", user.id)
       .or(
         [
           // title variants
+          `title.ilike.${pattern}`,
           `data->>appraisalTitle.ilike.${pattern}`,
           `data->>appraisal_title.ilike.${pattern}`,
 
           // address bits
-          `data->>streetAddress.ilike.${pattern}`,
-          `data->>street_address.ilike.${pattern}`,
-          `data->>suburb.ilike.${pattern}`,
+          `address.ilike.${pattern}`,
+          `suburb.ilike.${pattern}`,
+          `postcode.ilike.${pattern}`,
 
-          // owner + general notes (basic “search more text”)
+          // owner + general notes within JSON
           `data->>ownerNames.ilike.${pattern}`,
-          `data->>notes.ilike.${pattern}`,
+          `data->>ownerEmail.ilike.${pattern}`,
+          `notes.ilike.${pattern}`,
         ].join(",")
       )
       .order("created_at", { ascending: false })
       .limit(10);
 
     if (appraisalError) {
-      console.error(
-        "[/api/search] appraisals error:",
-        JSON.stringify(appraisalError, null, 2)
-      );
+      console.error("[/api/search] appraisals error:", appraisalError);
     }
 
     const appraisals =
@@ -143,16 +142,18 @@ export async function GET(req: NextRequest) {
         const d = (row.data ?? {}) as any;
 
         const title =
+          row.title ??
           d.appraisalTitle ??
           d.appraisal_title ??
-          row.street_address ??
+          row.address ??
           `Appraisal #${row.id}`;
 
         const subtitle =
           [
-            row.street_address || d.streetAddress || d.street_address || "",
-            row.suburb || d.suburb || "",
-            row.postcode || d.postcode || "",
+            row.address || "",
+            row.suburb || "",
+            row.postcode || "",
+            row.state || "",
           ]
             .filter(Boolean)
             .join(", ") ||
@@ -166,7 +167,6 @@ export async function GET(req: NextRequest) {
           subtitle,
           status: row.status ?? d.status ?? null,
           created_at: row.created_at ?? null,
-          kind: "appraisal" as const,
         };
       }) ?? [];
 

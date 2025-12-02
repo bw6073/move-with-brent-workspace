@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { GlobalSearchBox } from "@/components/search/GlobalSearchBox";
 
 type Props = {
   children: React.ReactNode;
@@ -121,10 +122,17 @@ export const AppShell: React.FC<Props> = ({ children }) => {
       <div className="flex min-h-screen flex-1 flex-col">
         {/* Mobile/iPad header toggle if you want it too */}
         <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
-          <div>
+          {/* Left: CRM label + Search */}
+          <div className="flex items-center gap-4">
             <h1 className="text-xl font-semibold text-slate-900">CRM</h1>
+
+            {/* Search bar */}
+            <div className="hidden md:block w-64">
+              <GlobalSearchBox />
+            </div>
           </div>
 
+          {/* Right: Logout */}
           <LogoutButton />
         </header>
 
