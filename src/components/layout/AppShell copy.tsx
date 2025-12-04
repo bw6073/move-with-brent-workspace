@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { GlobalSearchBox } from "@/components/search/GlobalSearchBox";
-import { Footer } from "./Footer";
 
 type Props = {
   children: React.ReactNode;
@@ -17,11 +16,14 @@ export const AppShell: React.FC<Props> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
+  // Load initial state from localStorage (so it remembers your choice)
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(SIDEBAR_KEY);
       if (raw === "1") setCollapsed(true);
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, []);
 
   const toggleCollapsed = () => {
@@ -29,7 +31,9 @@ export const AppShell: React.FC<Props> = ({ children }) => {
       const next = !prev;
       try {
         window.localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
-      } catch {}
+      } catch {
+        // ignore
+      }
       return next;
     });
   };
@@ -94,6 +98,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
                 }`}
                 title={collapsed ? item.label : undefined}
               >
+                {/* Bullet / icon placeholder */}
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
                     active ? "bg-white" : "bg-slate-400"
@@ -105,6 +110,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
           })}
         </nav>
 
+        {/* Bottom mini status (optional) */}
         {!collapsed && (
           <div className="border-t border-slate-200 p-3 text-[11px] text-slate-500">
             Signed in as <span className="font-medium">Brent</span>
@@ -114,24 +120,23 @@ export const AppShell: React.FC<Props> = ({ children }) => {
 
       {/* MAIN AREA */}
       <div className="flex min-h-screen flex-1 flex-col">
-        {/* Header */}
+        {/* Mobile/iPad header toggle if you want it too */}
         <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+          {/* Left: CRM label + Search */}
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-semibold text-slate-900">CRM</h1>
 
+            {/* Search bar */}
             <div className="hidden md:block w-64">
               <GlobalSearchBox />
             </div>
           </div>
 
+          {/* Right: Logout */}
           <LogoutButton />
         </header>
 
-        {/* MAIN CONTENT */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
-
-        {/* FOOTER */}
-        <Footer />
       </div>
     </div>
   );
