@@ -8,6 +8,7 @@ type ContactPayload = {
   name: string;
   first_name: string;
   last_name: string;
+  preferred_name: string;
   email: string;
   phone: string;
   street_address: string;
@@ -29,6 +30,7 @@ export function ContactCreateForm() {
     name: "",
     first_name: "",
     last_name: "",
+    preferred_name: "",
     email: "",
     phone: "",
     street_address: "",
@@ -45,7 +47,22 @@ export function ContactCreateForm() {
     key: K,
     value: ContactPayload[K]
   ) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next: ContactPayload = { ...prev, [key]: value };
+
+      if (
+        key === "first_name" ||
+        key === "last_name" ||
+        key === "preferred_name"
+      ) {
+        const fullName = `${next.first_name ?? ""} ${next.last_name ?? ""}`
+          .trim()
+          .replace(/\s+/g, " ");
+        next.name = (next.preferred_name || fullName || "").trim();
+      }
+
+      return next;
+    });
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -55,11 +72,27 @@ export function ContactCreateForm() {
     setSaving(true);
     setError(null);
 
+    // finalise name on submit just in case
+    const fullName = `${form.first_name ?? ""} ${form.last_name ?? ""}`
+      .trim()
+      .replace(/\s+/g, " ");
+    const finalName = (
+      form.preferred_name ||
+      form.name ||
+      fullName ||
+      ""
+    ).trim();
+
+    const payload: ContactPayload = {
+      ...form,
+      name: finalName,
+    };
+
     try {
       const res = await fetch("/api/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -78,7 +111,6 @@ export function ContactCreateForm() {
       const saved = await res.json();
       console.log("Contact created:", saved);
 
-      // Go to contact detail page
       if (saved?.id) {
         router.push(`/contacts/${saved.id}`);
       } else {
@@ -102,7 +134,7 @@ export function ContactCreateForm() {
       {error && <p className="text-xs text-red-600">{error}</p>}
 
       {/* Name */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1">
           <label className="block text-xs font-medium text-slate-700">
             First name
@@ -125,18 +157,17 @@ export function ContactCreateForm() {
             autoComplete="family-name"
           />
         </div>
-      </div>
-
-      <div className="space-y-1">
-        <label className="block text-xs font-medium text-slate-700">
-          Display name (optional)
-        </label>
-        <input
-          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-          placeholder="If empty, first + last will be used"
-          value={form.name}
-          onChange={(e) => updateField("name", e.target.value)}
-        />
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-slate-700">
+            Preferred name (optional)
+          </label>
+          <input
+            className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            placeholder="What you call them day-to-day"
+            value={form.preferred_name}
+            onChange={(e) => updateField("preferred_name", e.target.value)}
+          />
+        </div>
       </div>
 
       {/* Contact info */}

@@ -44,6 +44,7 @@ const prevOrEmpty = (v: string | null | undefined) => v ?? "";
 export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
   const [form, setForm] = useState<Contact>({
     ...contact,
+    preferred_name: contact.preferred_name ?? "",
     first_name: contact.first_name ?? "",
     last_name: contact.last_name ?? "",
     email: contact.email ?? "",
@@ -81,13 +82,22 @@ export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
           [field]: value,
         };
 
-        if (field === "first_name" || field === "last_name") {
+        if (
+          field === "first_name" ||
+          field === "last_name" ||
+          field === "preferred_name"
+        ) {
           const first =
             field === "first_name" ? value : prevOrEmpty(prev.first_name);
           const last =
             field === "last_name" ? value : prevOrEmpty(prev.last_name);
-          next.name =
-            [first, last].filter(Boolean).join(" ") || prev.name || "";
+          const preferred =
+            field === "preferred_name"
+              ? value
+              : prevOrEmpty(prev.preferred_name);
+
+          const fullName = `${first} ${last}`.trim().replace(/\s+/g, " ");
+          next.name = (preferred || fullName || prev.name || "").trim();
         }
 
         return next;
@@ -103,13 +113,15 @@ export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
     setSavedMessage(null);
 
     try {
+      const fullName = `${form.first_name ?? ""} ${form.last_name ?? ""}`
+        .trim()
+        .replace(/\s+/g, " ");
+
       const payload = {
-        name:
-          form.name ||
-          `${form.first_name ?? ""} ${form.last_name ?? ""}`.trim() ||
-          null,
+        name: form.name || form.preferred_name || fullName || null,
         first_name: form.first_name || null,
         last_name: form.last_name || null,
+        preferred_name: form.preferred_name || null,
         email: form.email || null,
 
         phone_mobile: form.phone_mobile || null,
@@ -155,6 +167,7 @@ export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
       setForm((prev) => ({
         ...prev,
         ...updated,
+        preferred_name: updated.preferred_name ?? "",
         first_name: updated.first_name ?? "",
         last_name: updated.last_name ?? "",
         email: updated.email ?? "",
@@ -208,7 +221,6 @@ export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
         return;
       }
 
-      // Simple redirect back to contacts list
       window.location.href = "/contacts";
     } catch (err) {
       console.error("Unexpected error deleting contact", err);
@@ -256,6 +268,20 @@ export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
             onChange={handleChange("last_name")}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             autoComplete="family-name"
+          />
+        </div>
+
+        {/* Preferred name */}
+        <div className="space-y-1 md:col-span-2">
+          <label className="block text-xs font-medium text-slate-700">
+            Preferred name
+          </label>
+          <input
+            type="text"
+            value={form.preferred_name ?? ""}
+            onChange={handleChange("preferred_name")}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            placeholder="What you call them day-to-day (optional)"
           />
         </div>
 

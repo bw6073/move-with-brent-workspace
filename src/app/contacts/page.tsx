@@ -7,6 +7,7 @@ type ContactRow = {
   id: number;
   full_name?: string | null;
   name?: string | null;
+  preferred_name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   email?: string | null;
@@ -53,6 +54,7 @@ export default async function ContactsPage() {
 
   const contacts = rows.map((c) => {
     const displayName =
+      c.preferred_name ||
       c.full_name ||
       c.name ||
       [c.first_name, c.last_name].filter(Boolean).join(" ") ||

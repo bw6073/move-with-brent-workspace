@@ -1,3 +1,4 @@
+// src/app/contacts/new/NewContactPageClient.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -12,7 +13,8 @@ export default function NewContactPageClient() {
   const propertyIdParam = searchParams.get("propertyId");
   const propertyId = propertyIdParam ? Number(propertyIdParam) : null;
 
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [preferredName, setPreferredName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneMobile, setPhoneMobile] = useState("");
@@ -22,6 +24,8 @@ export default function NewContactPageClient() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (saving) return;
+
     setSaving(true);
     setError(null);
 
@@ -36,13 +40,26 @@ export default function NewContactPageClient() {
       return;
     }
 
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
+    const trimmedPreferred = preferredName.trim();
+
+    const fullName = `${trimmedFirst} ${trimmedLast}`
+      .trim()
+      .replace(/\s+/g, " ");
+
+    // Rule C: preferred_name || name || (first + last)
+    const displayName = trimmedPreferred || fullName || "" || null;
+
     // 1) Insert contact
     const { data: contact, error: contactError } = await supabase
       .from("contacts")
       .insert({
         user_id: user.id,
-        name: name.trim() || null,
-        preferred_name: preferredName.trim() || null,
+        first_name: trimmedFirst || null,
+        last_name: trimmedLast || null,
+        preferred_name: trimmedPreferred || null,
+        name: displayName,
         email: email.trim() || null,
         phone_mobile: phoneMobile.trim() || null,
         phone: phone.trim() || null,
@@ -106,32 +123,48 @@ export default function NewContactPageClient() {
       >
         {error && <p className="text-xs text-red-600">{error}</p>}
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="sm:col-span-1">
             <label className="block text-xs font-medium text-slate-600">
-              Name
+              First name
             </label>
             <input
               type="text"
               required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
             />
           </div>
 
-          <div>
+          <div className="sm:col-span-1">
             <label className="block text-xs font-medium text-slate-600">
-              Preferred name
+              Last name
+            </label>
+            <input
+              type="text"
+              required
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+            />
+          </div>
+
+          <div className="sm:col-span-1">
+            <label className="block text-xs font-medium text-slate-600">
+              Preferred name (optional)
             </label>
             <input
               type="text"
               value={preferredName}
               onChange={(e) => setPreferredName(e.target.value)}
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              placeholder="E.g. Mitch"
             />
           </div>
+        </div>
 
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="block text-xs font-medium text-slate-600">
               Email

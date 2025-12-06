@@ -44,24 +44,27 @@ const formatDate = (iso: string | null | undefined): string => {
   const time = d.toLocaleTimeString("en-AU", {
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false, // force 24-hour format on both server & client
+    hour12: false,
   });
 
   return `${date} ${time}`;
 };
 
 export default function ContactDetailClient({ initialContact }: Props) {
-  // Source of truth for the contact on the client
   const [contact, setContact] = useState<Contact>(initialContact);
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<RightTab>("timeline");
 
   const handleContactUpdated = (updated: Contact) => {
     setContact(updated);
-    setEditing(false); // go back to read-only after save
+    setEditing(false);
   };
 
   const displayName = getDisplayName(contact);
+  const fullName =
+    [contact.first_name, contact.last_name].filter(Boolean).join(" ") ||
+    contact.name ||
+    "—";
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-6">
@@ -108,7 +111,7 @@ export default function ContactDetailClient({ initialContact }: Props) {
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Name
                   </dt>
-                  <dd>{displayName}</dd>
+                  <dd>{fullName}</dd>
                 </div>
 
                 {contact.preferred_name && (
@@ -130,7 +133,7 @@ export default function ContactDetailClient({ initialContact }: Props) {
                   </div>
                 )}
 
-                {/* Phones – show all that exist */}
+                {/* Phones */}
                 {(contact.phone_mobile ||
                   contact.phone_home ||
                   contact.phone_work ||
@@ -219,7 +222,7 @@ export default function ContactDetailClient({ initialContact }: Props) {
                   </div>
                 )}
 
-                {/* Notes (short preview) */}
+                {/* Notes */}
                 {contact.notes && (
                   <div>
                     <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -232,7 +235,7 @@ export default function ContactDetailClient({ initialContact }: Props) {
                 )}
 
                 {/* Meta */}
-                <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500 space-y-0.5">
+                <div className="space-y-0.5 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
                   <div>
                     <span className="font-semibold">Created:</span>{" "}
                     {formatDate(contact.created_at)}
@@ -252,9 +255,8 @@ export default function ContactDetailClient({ initialContact }: Props) {
           )}
         </section>
 
-        {/* RIGHT: tabbed panel – timeline / tasks / activity / appraisals / notes / linked */}
+        {/* RIGHT: tabbed panel */}
         <section className="space-y-3">
-          {/* Tabs */}
           <div className="flex flex-wrap gap-1 text-xs">
             {[
               { id: "timeline", label: "Timeline" },
@@ -280,28 +282,22 @@ export default function ContactDetailClient({ initialContact }: Props) {
             ))}
           </div>
 
-          {/* Tab content */}
           <div className="space-y-4">
             {activeTab === "timeline" && (
               <ContactTimelineCard contactId={contact.id} />
             )}
-
             {activeTab === "tasks" && (
               <ContactTasksCard contactId={contact.id} />
             )}
-
             {activeTab === "activity" && (
               <ContactActivityCard contactId={contact.id} />
             )}
-
             {activeTab === "appraisals" && (
               <ContactAppraisalsCard contactId={contact.id} />
             )}
-
             {activeTab === "notes" && (
               <ContactNotesCard contactId={contact.id} />
             )}
-
             {activeTab === "linked" && (
               <ContactLinkedContactsCard contactId={contact.id} />
             )}
