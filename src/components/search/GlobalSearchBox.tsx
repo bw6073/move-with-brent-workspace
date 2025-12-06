@@ -137,7 +137,7 @@ export function GlobalSearchBox() {
       </div>
 
       {open && query.trim().length >= 2 && (
-        <div className="absolute right-0 z-20 mt-1 w-[26rem] max-w-[90vw] rounded-xl border border-slate-200 bg-white text-xs shadow-lg">
+        <div className="absolute inset-x-0 z-20 mt-1 rounded-xl border border-slate-200 bg-white text-xs shadow-lg">
           <div className="max-h-80 overflow-auto p-2">
             {loading && <p className="px-2 py-1 text-slate-500">Searching…</p>}
 
