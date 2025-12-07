@@ -1,11 +1,11 @@
+// src/app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.css";
-import { RootShell } from "@/components/layout/RootShell";
+import { AppShell } from "@/components/layout/AppShell";
 
 export const metadata: Metadata = {
   title: "Move With Brent – CRM",
   description: "Brent's internal workspace",
-  manifest: "/manifest.json",
   icons: {
     apple: "/apple-touch-icon.png",
   },
@@ -24,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* Extra fallback in case some browsers ignore the Metadata API */}
+        {/* iOS “app” meta – keeps it full-screen when added to Home Screen */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta
           name="apple-mobile-web-app-status-bar-style"
@@ -32,11 +32,10 @@ export default function RootLayout({
         />
         <meta name="apple-mobile-web-app-title" content="Welcome Home" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <link rel="manifest" href="/manifest.json" />
+        {/* NOTE: no <link rel="manifest"> here on purpose */}
       </head>
       <body>
-        {/* Decide here whether to show full CRM shell or bare kiosk */}
-        <RootShell>{children}</RootShell>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
