@@ -1,13 +1,10 @@
-// src/app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.css";
-import { AppShell } from "@/components/layout/AppShell";
+import { RootShell } from "@/components/layout/RootShell";
 
 export const metadata: Metadata = {
   title: "Move With Brent – CRM",
   description: "Brent's internal workspace",
-
-  // PWA Setup
   manifest: "/manifest.json",
   icons: {
     apple: "/apple-touch-icon.png",
@@ -27,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* Extra fallback in case some browsers ignore Metadata API */}
+        {/* Extra fallback in case some browsers ignore the Metadata API */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta
           name="apple-mobile-web-app-status-bar-style"
@@ -38,7 +35,8 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body>
-        <AppShell>{children}</AppShell>
+        {/* Decide here whether to show full CRM shell or bare kiosk */}
+        <RootShell>{children}</RootShell>
       </body>
     </html>
   );
