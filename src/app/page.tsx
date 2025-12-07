@@ -3,6 +3,8 @@ import React from "react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/requireUser";
 
+// ───────────────── TYPES ─────────────────
+
 type HomeTaskRow = {
   id: number;
   title: string;
@@ -31,6 +33,25 @@ type HomeContactRow = {
   created_at: string | null;
 };
 
+type OpenHomeEvent = {
+  id: string;
+  property_id: number;
+  title: string | null;
+  start_at: string;
+  end_at: string | null;
+  notes: string | null;
+};
+
+type OpenHomeProperty = {
+  id: number;
+  street_address: string;
+  suburb: string;
+  state: string;
+  postcode: string;
+};
+
+// ───────────────── HELPERS ─────────────────
+
 const formatDate = (iso: string | null) => {
   if (!iso) return "No due date";
   const d = new Date(iso);
@@ -50,6 +71,18 @@ const formatCreated = (iso: string | null) => {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+  });
+};
+
+const formatDateTimeShort = (iso: string | null) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-AU", {
+    day: "2-digit",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
   });
 };
 
@@ -88,10 +121,12 @@ const linkPill = (t: HomeTaskRow) => {
   );
 };
 
+// ───────────────── PAGE ─────────────────
+
 export default async function HomePage() {
   const { user, supabase } = await requireUser();
 
-  // ───────────────── TASKS SNAPSHOT ─────────────────
+  // ── TASKS SNAPSHOT ─────────────────────
   const { data: taskData, error: taskError } = await supabase
     .from("tasks")
     .select(
@@ -162,7 +197,7 @@ export default async function HomePage() {
 
   const tasks = allTasks.slice(0, 10);
 
-  // ───────────────── RECENT APPRAISALS ─────────────────
+  // ── RECENT APPRAISALS ──────────────────
   const { data: appraisalData } = await supabase
     .from("appraisals")
     .select("*")
@@ -194,7 +229,7 @@ export default async function HomePage() {
     }
   );
 
-  // ───────────────── RECENT CONTACTS ─────────────────
+  // ── RECENT CONTACTS ────────────────────
   const { data: contactData } = await supabase
     .from("contacts")
     .select("*")
@@ -220,6 +255,80 @@ export default async function HomePage() {
     };
   });
 
+  // ── OPEN HOMES SNAPSHOT ────────────────
+  const { data: openHomeData, error: openHomeError } = await supabase
+    .from("open_home_events")
+    .select("id, property_id, title, start_at, end_at, notes")
+    .order("start_at", { ascending: true })
+    .limit(20);
+
+  if (openHomeError) {
+    console.error("[HomePage] open_home_events error", openHomeError);
+  }
+
+  const openHomeEvents: OpenHomeEvent[] = (openHomeData ?? []).map(
+    (row: any) => ({
+      id: row.id,
+      property_id: row.property_id,
+      title: row.title ?? null,
+      start_at: row.start_at,
+      end_at: row.end_at ?? null,
+      notes: row.notes ?? null,
+    })
+  );
+
+  const now = new Date();
+
+  const upcomingOpenHomes = openHomeEvents
+    .filter((e) => {
+      const start = new Date(e.start_at);
+      return start.getTime() >= now.getTime();
+    })
+    .slice(0, 5);
+
+  const pastOpenHomes = openHomeEvents
+    .filter((e) => {
+      const start = new Date(e.start_at);
+      return start.getTime() < now.getTime();
+    })
+    .sort((a, b) => {
+      // most recent first in the slice
+      return new Date(b.start_at).getTime() - new Date(a.start_at).getTime();
+    })
+    .slice(0, 5);
+
+  // Load properties for those open homes
+  const openHomePropertyIds = Array.from(
+    new Set(openHomeEvents.map((e) => e.property_id).filter(Boolean))
+  );
+
+  const propertyMap = new Map<number, OpenHomeProperty>();
+
+  if (openHomePropertyIds.length > 0) {
+    const { data: openHomeProperties } = await supabase
+      .from("properties")
+      .select("id, street_address, suburb, state, postcode")
+      .in("id", openHomePropertyIds);
+
+    (openHomeProperties ?? []).forEach((p: any) => {
+      propertyMap.set(p.id, {
+        id: p.id,
+        street_address: p.street_address,
+        suburb: p.suburb,
+        state: p.state,
+        postcode: p.postcode,
+      });
+    });
+  }
+
+  const formatOpenHomePropertyLabel = (event: OpenHomeEvent) => {
+    const p = propertyMap.get(event.property_id);
+    if (!p) return `Property #${event.property_id}`;
+    return `${p.street_address}, ${p.suburb} ${p.state} ${p.postcode}`;
+  };
+
+  // ───────────────── UI ───────────────────
+
   return (
     <div className="space-y-8">
       {/* HEADER */}
@@ -235,7 +344,7 @@ export default async function HomePage() {
       </header>
 
       {/* QUICK NAV CARDS */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Link
           href="/contacts"
           className="rounded-xl border border-slate-300 bg-white p-5 shadow-sm hover:bg-slate-50"
@@ -321,7 +430,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* MAIN GRID: TASKS + RECENT ACTIVITY */}
+      {/* MAIN GRID: TASKS + RIGHT SIDE (open homes + recent activity) */}
       <section className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         {/* TASK SNAPSHOT */}
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -408,8 +517,95 @@ export default async function HomePage() {
           )}
         </div>
 
-        {/* RECENT ACTIVITY */}
+        {/* RIGHT COLUMN: open homes + recent activity */}
         <div className="space-y-4">
+          {/* OPEN HOMES SNAPSHOT */}
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">
+                Open homes
+              </h2>
+              <div className="flex gap-2">
+                <Link
+                  href="/open-homes/new"
+                  className="rounded-full bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700"
+                >
+                  + Schedule
+                </Link>
+                <Link
+                  href="/open-homes"
+                  className="rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  View all
+                </Link>
+              </div>
+            </div>
+
+            {openHomeEvents.length === 0 ? (
+              <p className="text-xs text-slate-500">
+                No open homes scheduled. Create one to start tracking attendees.
+              </p>
+            ) : (
+              <div className="space-y-3 text-sm">
+                {upcomingOpenHomes.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-emerald-700">
+                      Upcoming
+                    </p>
+                    <ul className="space-y-1.5">
+                      {upcomingOpenHomes.map((e) => (
+                        <li key={e.id} className="flex justify-between gap-2">
+                          <div className="min-w-0">
+                            <Link
+                              href={`/open-homes/${e.id}`}
+                              className="block truncate font-medium text-slate-900 hover:underline"
+                            >
+                              {e.title || "Open home"}
+                            </Link>
+                            <p className="truncate text-xs text-slate-500">
+                              {formatOpenHomePropertyLabel(e)}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-[11px] text-slate-600">
+                            {formatDateTimeShort(e.start_at)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {pastOpenHomes.length > 0 && (
+                  <div>
+                    <p className="mt-2 mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                      Recent past
+                    </p>
+                    <ul className="space-y-1.5">
+                      {pastOpenHomes.map((e) => (
+                        <li key={e.id} className="flex justify-between gap-2">
+                          <div className="min-w-0">
+                            <Link
+                              href={`/open-homes/${e.id}`}
+                              className="block truncate font-medium text-slate-900 hover:underline"
+                            >
+                              {e.title || "Open home"}
+                            </Link>
+                            <p className="truncate text-xs text-slate-500">
+                              {formatOpenHomePropertyLabel(e)}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-[11px] text-slate-600">
+                            {formatDateTimeShort(e.start_at)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Recent appraisals */}
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-2 flex items-center justify-between">

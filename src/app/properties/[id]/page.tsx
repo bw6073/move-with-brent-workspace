@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PropertySideTabs } from "@/components/properties/PropertySideTabs";
+import { PropertyOpenHomesPanel } from "./PropertyOpenHomesPanel";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -85,7 +86,7 @@ const statusClass = (status: string | null | undefined) => {
 };
 
 export default async function PropertyDetailPage({ params }: PageProps) {
-  // 👇 unwrap the params Promise (this is what Next 16 wants)
+  // ✅ Next 16: unwrap params (it's a Promise)
   const { id } = await params;
   const numericId = Number(id);
 
@@ -336,6 +337,9 @@ export default async function PropertyDetailPage({ params }: PageProps) {
           <PropertySideTabs propertyId={numericId} />
         </section>
       </div>
+
+      {/* 🔥 Open homes for this property */}
+      <PropertyOpenHomesPanel propertyId={numericId} />
     </div>
   );
 }

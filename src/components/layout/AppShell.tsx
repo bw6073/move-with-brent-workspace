@@ -17,6 +17,10 @@ export const AppShell: React.FC<Props> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
+  // 🔒 DETECT KIOSK ROUTES (standalone mode)
+  const isKiosk =
+    pathname?.startsWith("/open-homes/") && pathname.includes("/kiosk");
+
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(SIDEBAR_KEY);
@@ -40,8 +44,17 @@ export const AppShell: React.FC<Props> = ({ children }) => {
     { href: "/properties", label: "Properties" },
     { href: "/appraisals", label: "Appraisals" },
     { href: "/tasks", label: "Tasks" },
+    { href: "/open-homes", label: "Open Homes" },
   ];
 
+  // 🧾 KIOSK MODE: no CRM chrome, just the kiosk UI
+  if (isKiosk) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-50">{children}</div>
+    );
+  }
+
+  // 🧱 NORMAL CRM SHELL
   return (
     <div className="flex min-h-screen bg-slate-50">
       {/* SIDEBAR */}
