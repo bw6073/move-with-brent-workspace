@@ -399,19 +399,16 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
   const handleSave = async (markComplete: boolean) => {
     if (saving) return;
     setSaving(true);
-    setSaveError(null);
-    setOfflineSaved(false);
 
     try {
       if (!form.streetAddress || !form.suburb || !form.postcode) {
         alert(
           "Please fill in street address, suburb and postcode before saving."
         );
-        setSaving(false);
         return;
       }
 
-      const apiBody = {
+      const payload = {
         status: markComplete ? "COMPLETED" : "DRAFT",
         appraisalTitle: form.appraisalTitle,
         streetAddress: form.streetAddress,
@@ -420,95 +417,67 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         state: form.state || "WA",
         data: form,
         contactIds: form.contactIds ?? [],
+        // ✅ Use the prop only; don't touch form.propertyId
         property_id: propertyId ?? null,
       };
 
-      const url =
-        mode === "edit" && appraisalId
-          ? `/api/appraisals/${appraisalId}`
-          : "/api/appraisals";
+      const isEditing = mode === "edit" && appraisalId;
 
-      const method = mode === "edit" && appraisalId ? "PUT" : "POST";
+      const url = isEditing
+        ? `/api/appraisals/${appraisalId}`
+        : "/api/appraisals";
 
-      const payload: AppraisalJobPayload = {
-        mode: "create",
-        data: apiBody,
-      };
-
-      // Offline behaviour only for *new* appraisals for now
-      const isCreate = mode === "create";
-
-      if (typeof navigator !== "undefined" && !navigator.onLine && isCreate) {
-        enqueueAppraisalJob(payload);
-        setOfflineSaved(true);
-        alert(
-          "No internet connection. This appraisal has been saved on this device and will sync when you are back online."
-        );
-        return;
-      }
+      const method = isEditing ? "PUT" : "POST";
 
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apiBody),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const text = await res.text();
         console.error("Save error status:", res.status, res.statusText);
         console.error("Save error body:", text);
-
-        if (isCreate) {
-          enqueueAppraisalJob(payload);
-          setOfflineSaved(true);
-          alert(
-            "There was a problem saving to the server. The appraisal has been stored on this device and will sync when you are back online."
-          );
-        } else {
-          setSaveError("There was a problem saving the appraisal.");
-          alert("There was a problem saving the appraisal.");
-        }
+        alert("There was a problem saving the appraisal.");
         return;
       }
 
       const saved = await res.json();
       console.log("Saved appraisal:", saved);
 
-      if (markComplete) {
-        alert("Appraisal saved and marked as completed.");
-      } else {
-        alert("Appraisal saved as draft.");
+      // 🔎 Try to pull the new ID out of the response
+      let newId: number | null = null;
+
+      if (saved) {
+        // Adjust this branch if your API shape is different
+        if (saved.appraisal?.id) {
+          newId = saved.appraisal.id as number;
+        } else if (saved.id) {
+          newId = saved.id as number;
+        }
       }
+
+      // 🧠 If we just CREATED a new appraisal, jump to the edit page for it
+      if (mode === "create" && newId) {
+        alert(
+          markComplete
+            ? "Appraisal saved and marked as completed."
+            : "Appraisal saved as draft."
+        );
+        window.location.href = `/appraisals/${newId}/edit`;
+        return;
+      }
+
+      // Normal edit case (already on /edit route)
+      alert(
+        markComplete
+          ? "Appraisal saved and marked as completed."
+          : "Appraisal saved as draft."
+      );
     } catch (err) {
       console.error("Save error (network/JS):", err);
-
-      const apiBody = {
-        status: markComplete ? "COMPLETED" : "DRAFT",
-        appraisalTitle: form.appraisalTitle,
-        streetAddress: form.streetAddress,
-        suburb: form.suburb,
-        postcode: form.postcode,
-        state: form.state || "WA",
-        data: form,
-        contactIds: form.contactIds ?? [],
-        property_id: propertyId ?? null,
-      };
-
-      const payload: AppraisalJobPayload = {
-        mode: "create",
-        data: apiBody,
-      };
-
-      if (mode === "create") {
-        enqueueAppraisalJob(payload);
-        setOfflineSaved(true);
-        alert(
-          "Unexpected error while saving, but the appraisal has been stored on this device and will sync when you are back online."
-        );
-      } else {
-        setSaveError("Unexpected error while saving the appraisal.");
-        alert("Unexpected error while saving the appraisal.");
-      }
+      alert("Unexpected error while saving the appraisal.");
     } finally {
       setSaving(false);
     }
