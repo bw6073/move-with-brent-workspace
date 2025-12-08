@@ -26,6 +26,12 @@ type RouteProps = {
   params: Promise<{ eventId: string }>;
 };
 
+const formatDateTime = (iso: string | null) => {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  return `${format(d, "EEE d MMM yyyy")} · ${format(d, "h:mm a")}`;
+};
+
 export default async function OpenHomeAdminPage(props: RouteProps) {
   const { eventId } = await props.params;
   const supabase = await createClient();
@@ -45,8 +51,8 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
     }
 
     return (
-      <div className="p-6 space-y-3">
-        <h1 className="mb-2 text-2xl font-semibold">Open Home</h1>
+      <div className="mx-auto max-w-5xl px-6 py-6 space-y-3">
+        <h1 className="text-2xl font-semibold mb-2">Open home</h1>
         <p className="text-red-600">
           {isNotFound
             ? "This open home could not be found. It may have been deleted."
@@ -54,7 +60,7 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
         </p>
         <Link
           href="/open-homes"
-          className="mt-2 inline-flex text-sm text-blue-600 hover:underline"
+          className="inline-flex mt-2 text-sm text-blue-600 hover:underline"
         >
           ← Back to open homes
         </Link>
@@ -62,7 +68,7 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
     );
   }
 
-  // 2) Load the property
+  // 2) Load the property for the label
   const { data: property } = await supabase
     .from("properties")
     .select("id, street_address, suburb, state, postcode")
@@ -78,21 +84,21 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
     .from("open_home_attendees")
     .select(
       `
-        id,
-        created_at,
-        first_name,
-        last_name,
-        phone,
-        email,
-        lead_source,
-        lead_source_other,
-        is_buyer,
-        is_seller,
-        research_visit,
-        mailing_list_opt_in,
-        notes,
-        contact_id
-      `
+      id,
+      created_at,
+      first_name,
+      last_name,
+      phone,
+      email,
+      lead_source,
+      lead_source_other,
+      is_buyer,
+      is_seller,
+      research_visit,
+      mailing_list_opt_in,
+      notes,
+      contact_id
+    `
     )
     .eq("event_id", event.id)
     .order("created_at", { ascending: true })
@@ -100,69 +106,70 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
 
   const attendees: Attendee[] = attendeesData ?? [];
 
-  // Kiosk link for this event/property
+  // Kiosk URL with property label baked in
   const kioskUrl = `/open-homes/${event.id}/kiosk?propertyId=${
     event.property_id
   }&propertyAddress=${encodeURIComponent(propertyLabel)}`;
 
-  const formatDateTime = (iso: string | null) => {
-    if (!iso) return "-";
-    const d = new Date(iso);
-    return `${format(d, "EEE d MMM yyyy")} · ${format(d, "h:mm a")}`;
-  };
-
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="mb-1 text-2xl font-semibold">
-            {event.title || "Open Home"}
+    <div className="mx-auto max-w-5xl px-6 py-6 space-y-6">
+      {/* HEADER */}
+      <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+            Open home
+          </p>
+          <h1 className="text-2xl font-semibold text-slate-900">
+            {event.title || "Open home"}
           </h1>
-          <p className="text-sm text-zinc-600">{propertyLabel}</p>
-          <p className="mt-1 text-sm text-zinc-600">
+          <p className="text-sm text-slate-600">{propertyLabel}</p>
+          <p className="text-sm text-slate-500 mt-1">
             {formatDateTime(event.start_at)}
             {event.end_at ? ` – ${formatDateTime(event.end_at)}` : ""}
           </p>
         </div>
 
         <div className="flex flex-col items-end gap-2">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link
               href={`/open-homes/${event.id}/edit`}
-              className="inline-flex items-center rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
+              className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
               Edit
             </Link>
             <Link
               href={kioskUrl}
               target="_blank"
-              className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
             >
               Launch kiosk
             </Link>
             <DeleteEventButton eventId={event.id} />
           </div>
-          <p className="max-w-xs text-right text-xs text-zinc-500">
-            Open the kiosk link on your iPad/iPhone at the home open for visitor
-            check-ins.
+          <p className="max-w-xs text-right text-[11px] text-slate-500">
+            Open the kiosk link on your iPad or iPhone at the home open for
+            visitor check-ins.
           </p>
         </div>
-      </div>
+      </header>
 
-      {/* Event notes */}
+      {/* EVENT NOTES */}
       {event.notes && (
-        <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-          <strong className="font-medium">Event notes: </strong>
-          {event.notes}
-        </div>
+        <section className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Event notes
+          </div>
+          <p>{event.notes}</p>
+        </section>
       )}
 
-      {/* Attendees (client component) */}
-      <OpenHomeAttendeesClient
-        eventId={event.id}
-        initialAttendees={attendees}
-      />
+      {/* ATTENDEES */}
+      <section className="space-y-3">
+        <OpenHomeAttendeesClient
+          eventId={event.id}
+          initialAttendees={attendees}
+        />
+      </section>
     </div>
   );
 }
