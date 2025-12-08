@@ -11,6 +11,7 @@ type Step5OwnerOccupancyProps = {
   linkedContactIds: number[];
   onAddLinkedContact: (contactId: number) => void;
   onRemoveLinkedContact: (contactId: number) => void;
+  contactsLoading?: boolean; // 👈 NEW
 };
 
 export default function Step5OwnerOccupancy({
@@ -21,6 +22,7 @@ export default function Step5OwnerOccupancy({
   linkedContactIds,
   onAddLinkedContact,
   onRemoveLinkedContact,
+  contactsLoading, // 👈 NEW
 }: Step5OwnerOccupancyProps) {
   const [contactSearch, setContactSearch] = useState("");
 
@@ -35,7 +37,7 @@ export default function Step5OwnerOccupancy({
           .filter((c) => {
             if (linkedContactIds.includes(c.id)) return false;
             const q = contactSearch.toLowerCase();
-            const haystack = [c.name, c.email ?? "", (c as any).phone ?? ""]
+            const haystack = [c.name, c.email ?? "", c.phoneMobile ?? ""]
               .join(" ")
               .toLowerCase();
             return haystack.includes(q);
@@ -274,8 +276,8 @@ export default function Step5OwnerOccupancy({
                 className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1"
               >
                 <span className="font-medium text-slate-800">{c.name}</span>
-                {(c as any).phone && (
-                  <span className="text-slate-500">{(c as any).phone}</span>
+                {c.phoneMobile && (
+                  <span className="text-slate-500">{c.phoneMobile}</span>
                 )}
                 <button
                   type="button"
@@ -299,15 +301,21 @@ export default function Step5OwnerOccupancy({
           <label className="block text-xs font-medium text-slate-700">
             Add existing contact
           </label>
+
+          {contactsLoading && (
+            <p className="mt-1 text-xs text-slate-500">Loading contacts…</p>
+          )}
+
           <input
             type="text"
             value={contactSearch}
             onChange={(e) => setContactSearch(e.target.value)}
             placeholder="Type at least 2 letters to search…"
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            disabled={contactsLoading}
           />
 
-          {contactSearch.trim().length >= 2 && (
+          {contactSearch.trim().length >= 2 && !contactsLoading && (
             <>
               {searchResults.length > 0 ? (
                 <div className="mt-1 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white text-sm shadow-sm">
@@ -326,7 +334,7 @@ export default function Step5OwnerOccupancy({
                           {c.name}
                         </div>
                         <div className="text-xs text-slate-500">
-                          {c.email || "No contact details"}
+                          {c.email || c.phoneMobile || "No contact details"}
                         </div>
                       </div>
                       <span className="text-[11px] text-slate-500">Link</span>

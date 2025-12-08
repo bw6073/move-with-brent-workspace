@@ -24,6 +24,12 @@ import Step7PricingStrategy from "./steps/Step7PricingStrategy";
 import Step8PresentationMarketing from "./steps/Step8PresentationMarketing";
 import Step9Review from "./steps/Step9Review";
 
+import {
+  enqueueAppraisalJob,
+  processAppraisalQueue,
+  type AppraisalJobPayload,
+} from "@/lib/offline/appraisalQueue";
+
 export type AppraisalFormProps = {
   mode: "create" | "edit";
   appraisalId?: number;
@@ -72,6 +78,11 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
   const [step, setStep] = useState<Step>(1);
   const [saving, setSaving] = useState(false);
 
+  // Offline / queue state
+  const [offlineSaved, setOfflineSaved] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   // ---------------------------------------------------------
   // FORM STATE (WITH PREFILL CONTACT SUPPORT)
   // ---------------------------------------------------------
@@ -93,10 +104,7 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
     // New appraisal
     let base: FormState = { ...EMPTY_FORM };
 
-    // ❌ Removed: we no longer store propertyId in the form state
-    // if (propertyId) {
-    //   base.propertyId = propertyId;
-    // }
+    // We keep propertyId as a prop only (not inside form)
 
     if (prefillContact) {
       const idRaw = prefillContact.id;
@@ -148,9 +156,6 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         const json = await res.json();
         console.log("🟢 Contacts JSON for linking:", json);
 
-        // Handle both possible shapes:
-        // 1) plain array: [ { id, name, email, phone, ... }, ... ]
-        // 2) wrapped object: { items: [ ... ] }
         const rawList = Array.isArray(json)
           ? json
           : Array.isArray(json.items)
@@ -180,6 +185,44 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // ---------------------------------------------------------
+  // OFFLINE QUEUE: process on mount / when coming online
+  // ---------------------------------------------------------
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncNow = async () => {
+      if (typeof window === "undefined") return;
+      setSyncing(true);
+      try {
+        const processed = await processAppraisalQueue();
+        if (!cancelled && processed > 0) {
+          console.log(`[offline] synced ${processed} queued appraisal(s)`);
+        }
+      } finally {
+        if (!cancelled) setSyncing(false);
+      }
+    };
+
+    syncNow();
+
+    const handleOnline = () => {
+      void syncNow();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline);
+      }
     };
   }, []);
 
@@ -350,12 +393,14 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
   };
 
   // ---------------------------------------------------------
-  // SAVE / DELETE
+  // SAVE / DELETE (WITH OFFLINE QUEUE FOR NEW APPRAISALS)
   // ---------------------------------------------------------
 
   const handleSave = async (markComplete: boolean) => {
     if (saving) return;
     setSaving(true);
+    setSaveError(null);
+    setOfflineSaved(false);
 
     try {
       if (!form.streetAddress || !form.suburb || !form.postcode) {
@@ -366,7 +411,7 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         return;
       }
 
-      const payload = {
+      const apiBody = {
         status: markComplete ? "COMPLETED" : "DRAFT",
         appraisalTitle: form.appraisalTitle,
         streetAddress: form.streetAddress,
@@ -375,7 +420,6 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         state: form.state || "WA",
         data: form,
         contactIds: form.contactIds ?? [],
-        // ✅ Use the prop only; don't touch form.propertyId
         property_id: propertyId ?? null,
       };
 
@@ -386,18 +430,44 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
 
       const method = mode === "edit" && appraisalId ? "PUT" : "POST";
 
+      const payload: AppraisalJobPayload = {
+        mode: "create",
+        data: apiBody,
+      };
+
+      // Offline behaviour only for *new* appraisals for now
+      const isCreate = mode === "create";
+
+      if (typeof navigator !== "undefined" && !navigator.onLine && isCreate) {
+        enqueueAppraisalJob(payload);
+        setOfflineSaved(true);
+        alert(
+          "No internet connection. This appraisal has been saved on this device and will sync when you are back online."
+        );
+        return;
+      }
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(apiBody),
       });
 
       if (!res.ok) {
         const text = await res.text();
         console.error("Save error status:", res.status, res.statusText);
         console.error("Save error body:", text);
-        alert("There was a problem saving the appraisal.");
-        setSaving(false);
+
+        if (isCreate) {
+          enqueueAppraisalJob(payload);
+          setOfflineSaved(true);
+          alert(
+            "There was a problem saving to the server. The appraisal has been stored on this device and will sync when you are back online."
+          );
+        } else {
+          setSaveError("There was a problem saving the appraisal.");
+          alert("There was a problem saving the appraisal.");
+        }
         return;
       }
 
@@ -411,7 +481,34 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
       }
     } catch (err) {
       console.error("Save error (network/JS):", err);
-      alert("Unexpected error while saving the appraisal.");
+
+      const apiBody = {
+        status: markComplete ? "COMPLETED" : "DRAFT",
+        appraisalTitle: form.appraisalTitle,
+        streetAddress: form.streetAddress,
+        suburb: form.suburb,
+        postcode: form.postcode,
+        state: form.state || "WA",
+        data: form,
+        contactIds: form.contactIds ?? [],
+        property_id: propertyId ?? null,
+      };
+
+      const payload: AppraisalJobPayload = {
+        mode: "create",
+        data: apiBody,
+      };
+
+      if (mode === "create") {
+        enqueueAppraisalJob(payload);
+        setOfflineSaved(true);
+        alert(
+          "Unexpected error while saving, but the appraisal has been stored on this device and will sync when you are back online."
+        );
+      } else {
+        setSaveError("Unexpected error while saving the appraisal.");
+        alert("Unexpected error while saving the appraisal.");
+      }
     } finally {
       setSaving(false);
     }
@@ -467,11 +564,7 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
             </div>
           </div>
 
-          <div
-            className="flex items
-
--center gap-3 text-xs text-slate-500"
-          >
+          <div className="flex items-center gap-3 text-xs text-slate-500">
             <span>
               {mode === "create" ? "New appraisal" : "Editing appraisal"}
             </span>
@@ -501,6 +594,26 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
           <div className="hidden text-xs text-slate-500 sm:block">
             Changes are saved back to your database via the API routes.
           </div>
+        </div>
+
+        {/* Offline / sync status */}
+        <div className="mb-4 space-y-2">
+          {offlineSaved && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              This appraisal has been stored on this device and will sync when
+              you are back online.
+            </div>
+          )}
+          {syncing && (
+            <div className="rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+              Syncing offline appraisals…
+            </div>
+          )}
+          {saveError && (
+            <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
+              {saveError}
+            </div>
+          )}
         </div>
 
         {/* Step pills */}
@@ -576,6 +689,7 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
               linkedContactIds={form.contactIds ?? []}
               onAddLinkedContact={toggleLinkedContact}
               onRemoveLinkedContact={toggleLinkedContact}
+              contactsLoading={contactsLoading}
             />
           )}
 
