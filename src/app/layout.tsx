@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
+import { ServiceWorkerRegister } from "@/components/layout/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
   title: "Move With Brent – CRM",
@@ -35,6 +36,7 @@ export default function RootLayout({
         {/* NOTE: no <link rel="manifest"> here on purpose */}
       </head>
       <body>
+        <ServiceWorkerRegister />
         <AppShell>{children}</AppShell>
       </body>
     </html>

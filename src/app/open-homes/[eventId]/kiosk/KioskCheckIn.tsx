@@ -1,7 +1,7 @@
 // app/open-homes/[eventId]/kiosk/KioskCheckIn.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 type Props = {
   eventId: string;
@@ -20,6 +20,52 @@ type LeadSource =
   | "other";
 
 type Role = "buyer" | "seller" | "both" | null;
+
+// ───────────────────────────────────────────────────────────
+// Offline queue helpers (localStorage)
+// ───────────────────────────────────────────────────────────
+
+const OFFLINE_QUEUE_KEY = "mwb-kiosk-offline-queue";
+
+type OfflineQueuedAttendee = {
+  id: string;
+  eventId: string;
+  payload: any;
+  createdAt: string;
+};
+
+function readQueue(): OfflineQueuedAttendee[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(OFFLINE_QUEUE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as OfflineQueuedAttendee[];
+  } catch {
+    return [];
+  }
+}
+
+function writeQueue(queue: OfflineQueuedAttendee[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+}
+
+function addToQueue(eventId: string, payload: any) {
+  const queue = readQueue();
+  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  queue.push({
+    id,
+    eventId,
+    payload,
+    createdAt: new Date().toISOString(),
+  });
+  writeQueue(queue);
+}
+
+function clearItemFromQueue(id: string) {
+  const queue = readQueue().filter((item) => item.id !== id);
+  writeQueue(queue);
+}
 
 export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
   const [step, setStep] = useState<number>(1);
@@ -95,6 +141,63 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
     setStep((s) => Math.max(s - 1, 1));
   };
 
+  const resetForm = () => {
+    setStep(1);
+    setFirstName("");
+    setLastName("");
+    setPhone("");
+    setEmail("");
+    setRole(null);
+    setLeadSource("realestate_com_au");
+    setLeadSourceOther("");
+    setResearchVisit(null);
+    setMailingListOptIn(true);
+    setErrorMessage(null);
+  };
+
+  // ────────────────── OFFLINE SYNC ──────────────────
+
+  useEffect(() => {
+    async function syncQueue() {
+      // Only attempt sync if online
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+
+      const queue = readQueue().filter((item) => item.eventId === eventId);
+      if (!queue.length) return;
+
+      for (const item of queue) {
+        try {
+          const res = await fetch(`/api/open-homes/${item.eventId}/attendees`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(item.payload),
+          });
+
+          if (res.ok) {
+            clearItemFromQueue(item.id);
+          }
+        } catch {
+          // Keep it in the queue; it will retry next time we're online
+        }
+      }
+    }
+
+    // Run once on mount
+    void syncQueue();
+
+    // And whenever we come back online
+    function handleOnline() {
+      void syncQueue();
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+      return () => window.removeEventListener("online", handleOnline);
+    }
+
+    return;
+  }, [eventId]);
+
   // ────────────────── SUBMIT ──────────────────
 
   const handleSubmit = async () => {
@@ -106,24 +209,42 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
     const isBuyer = role === "buyer" || role === "both";
     const isSeller = role === "seller" || role === "both";
 
+    const payload = {
+      propertyId,
+      firstName,
+      lastName,
+      phone,
+      email,
+      leadSource,
+      leadSourceOther,
+      isBuyer,
+      isSeller,
+      researchVisit: researchVisit === "yes",
+      mailingListOptIn,
+      notes: null,
+    };
+
+    const isOffline =
+      typeof navigator !== "undefined" && navigator.onLine === false;
+
     try {
+      if (isOffline) {
+        // Offline: queue locally and behave like success
+        addToQueue(eventId, payload);
+
+        setShowThankYou(true);
+        setTimeout(() => {
+          setShowThankYou(false);
+          resetForm();
+        }, 2800);
+        return;
+      }
+
+      // Online: normal POST
       const res = await fetch(`/api/open-homes/${eventId}/attendees`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          propertyId,
-          firstName,
-          lastName,
-          phone,
-          email,
-          leadSource,
-          leadSourceOther,
-          isBuyer,
-          isSeller,
-          researchVisit: researchVisit === "yes",
-          mailingListOptIn,
-          notes: null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -136,23 +257,16 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
       // Success: show thank you screen & reset
       setShowThankYou(true);
       setTimeout(() => {
-        // reset for next visitor
         setShowThankYou(false);
-        setStep(1);
-        setFirstName("");
-        setLastName("");
-        setPhone("");
-        setEmail("");
-        setRole(null);
-        setLeadSource("realestate_com_au");
-        setLeadSourceOther("");
-        setResearchVisit(null);
-        setMailingListOptIn(true);
-        setErrorMessage(null);
+        resetForm();
       }, 2800);
     } catch (err) {
       console.error("Kiosk submit error:", err);
-      setErrorMessage("Network error. Please ask the agent for help.");
+      setErrorMessage(
+        isOffline
+          ? "Saved offline. This check-in will sync when back online."
+          : "Network error. Please ask the agent for help."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -248,7 +362,7 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
           <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.7)]">
             <span className="text-3xl">✓</span>
           </div>
-          <h2 className="text-2xl font-semibold mb-2">
+          <h2 className="mb-2 text-2xl font-semibold">
             Thanks for checking in
           </h2>
           <p className="max-w-sm text-sm text-slate-300">
@@ -264,10 +378,10 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
         return (
           <div className="space-y-6">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-blue-300/80 mb-2">
+              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-blue-300/80">
                 Step 1
               </p>
-              <h2 className="text-2xl font-semibold text-slate-50 mb-1">
+              <h2 className="mb-1 text-2xl font-semibold text-slate-50">
                 Your details
               </h2>
               <p className="text-sm text-slate-300">
@@ -277,22 +391,22 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="mb-1 block text-xs font-medium text-slate-300">
                   First name
                 </label>
                 <input
-                  className="w-full rounded-2xl bg-slate-900 border border-slate-700 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   autoComplete="given-name"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="mb-1 block text-xs font-medium text-slate-300">
                   Last name
                 </label>
                 <input
-                  className="w-full rounded-2xl bg-slate-900 border border-slate-700 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   autoComplete="family-name"
@@ -306,10 +420,10 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
         return (
           <div className="space-y-6">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-blue-300/80 mb-2">
+              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-blue-300/80">
                 Step 2
               </p>
-              <h2 className="text-2xl font-semibold text-slate-50 mb-1">
+              <h2 className="mb-1 text-2xl font-semibold text-slate-50">
                 Contact details
               </h2>
               <p className="text-sm text-slate-300">
@@ -320,11 +434,11 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="mb-1 block text-xs font-medium text-slate-300">
                   Mobile
                 </label>
                 <input
-                  className="w-full rounded-2xl bg-slate-900 border border-slate-700 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   inputMode="tel"
@@ -333,11 +447,11 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="mb-1 block text-xs font-medium text-slate-300">
                   Email (optional)
                 </label>
                 <input
-                  className="w-full rounded-2xl bg-slate-900 border border-slate-700 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   inputMode="email"
@@ -353,10 +467,10 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
         return (
           <div className="space-y-6">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-blue-300/80 mb-2">
+              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-blue-300/80">
                 Step 3
               </p>
-              <h2 className="text-2xl font-semibold text-slate-50 mb-1">
+              <h2 className="mb-1 text-2xl font-semibold text-slate-50">
                 Are you here today as a…
               </h2>
               <p className="text-sm text-slate-300">
@@ -371,7 +485,7 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
                 {roleButton("both", "Buyer & Seller")}
               </div>
 
-              <div className="space-y-2 pt-2 border-t border-slate-800">
+              <div className="space-y-2 border-t border-slate-800 pt-2">
                 <label className="block text-xs font-medium text-slate-300">
                   Is this visit mainly for research?
                 </label>
@@ -388,10 +502,10 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
         return (
           <div className="space-y-6">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-blue-300/80 mb-2">
+              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-blue-300/80">
                 Step 4
               </p>
-              <h2 className="text-2xl font-semibold text-slate-50 mb-1">
+              <h2 className="mb-1 text-2xl font-semibold text-slate-50">
                 Where did you see this property?
               </h2>
               <p className="text-sm text-slate-300">
@@ -413,11 +527,11 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
 
               {leadSource === "other" && (
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                  <label className="mb-1 block text-xs font-medium text-slate-300">
                     Please tell us where
                   </label>
                   <input
-                    className="w-full rounded-2xl bg-slate-900 border border-slate-700 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-50 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                     value={leadSourceOther}
                     onChange={(e) => setLeadSourceOther(e.target.value)}
                     placeholder="e.g. Friend, office window, flyer, etc."
@@ -433,10 +547,10 @@ export function KioskCheckIn({ eventId, propertyId, propertyAddress }: Props) {
         return (
           <div className="space-y-6">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-blue-300/80 mb-2">
+              <p className="mb-2 text-xs uppercase tracking-[0.2em] text-blue-300/80">
                 Step 5
               </p>
-              <h2 className="text-2xl font-semibold text-slate-50 mb-1">
+              <h2 className="mb-1 text-2xl font-semibold text-slate-50">
                 Stay in the loop
               </h2>
               <p className="text-sm text-slate-300">
