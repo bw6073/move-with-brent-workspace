@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 type RouteContext = {
-  params: Promise<{ id: string }>; // Next 16: params is a Promise
+  // Next 16: params is a Promise
+  params: Promise<{ id: string }>;
 };
 
 //
@@ -66,7 +67,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       updated_at: new Date().toISOString(),
     };
 
-    // Remove undefineds
+    // Remove undefineds so we don’t accidentally send them
     Object.keys(update).forEach((k) => {
       if (update[k] === undefined) delete update[k];
     });
@@ -124,7 +125,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 }
 
 //
-// DELETE – delete a contact
+// DELETE – delete a contact (and unlink open home attendees first)
 //
 export async function DELETE(_req: NextRequest, context: RouteContext) {
   try {
@@ -153,26 +154,45 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
     }
 
-    // If you have link tables (e.g. appraisal_contacts) you can clean them up here first.
+    // 1) Unlink any open_home_attendees that reference this contact
+    const { error: attendeesError } = await supabase
+      .from("open_home_attendees")
+      .update({ contact_id: null })
+      .eq("contact_id", contactId);
 
-    const { error } = await supabase
+    if (attendeesError) {
+      console.error(
+        "Failed to clear open_home_attendees.contact_id before delete",
+        attendeesError
+      );
+      return NextResponse.json(
+        {
+          error: "Failed to unlink attendees from contact",
+          supabaseError: attendeesError,
+        },
+        { status: 500 }
+      );
+    }
+
+    // 2) Delete the contact itself
+    const { error: deleteError } = await supabase
       .from("contacts")
       .delete()
       .eq("id", contactId)
       .eq("user_id", user.id);
 
-    if (error) {
+    if (deleteError) {
       console.error(
         "Failed to delete contact in DELETE /contacts/[id]",
-        JSON.stringify(error, null, 2)
+        JSON.stringify(deleteError, null, 2)
       );
       return NextResponse.json(
-        { error: "Failed to delete contact", supabaseError: error },
+        { error: "Failed to delete contact", supabaseError: deleteError },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (err) {
     console.error("Unexpected error in DELETE /contacts/[id]", err);
     return NextResponse.json(

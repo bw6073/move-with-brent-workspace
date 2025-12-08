@@ -9,11 +9,15 @@ import ContactAppraisalsCard from "./ContactAppraisalsCard";
 import { ContactNotesCard } from "./ContactNotesCard";
 import { ContactActivityCard } from "./ContactActivityCard";
 import { ContactTasksCard } from "./ContactTasksCard";
-import { ContactTimelineCard } from "./ContactTimelineCard";
 import { ContactLinkedContactsCard } from "./ContactLinkedContactsCard";
+import {
+  ContactOpenHomeTimeline,
+  type ContactOpenHomeActivity,
+} from "./ContactOpenHomeTimeline";
 
 type Props = {
   initialContact: Contact;
+  openHomeActivities: ContactOpenHomeActivity[];
 };
 
 const getDisplayName = (c: Contact): string =>
@@ -50,7 +54,10 @@ const formatDate = (iso: string | null | undefined): string => {
   return `${date} ${time}`;
 };
 
-export default function ContactDetailClient({ initialContact }: Props) {
+export default function ContactDetailClient({
+  initialContact,
+  openHomeActivities,
+}: Props) {
   const [contact, setContact] = useState<Contact>(initialContact);
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<RightTab>("timeline");
@@ -88,7 +95,7 @@ export default function ContactDetailClient({ initialContact }: Props) {
       </header>
 
       <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1.4fr)]">
-        {/* LEFT: read-only profile OR edit form */}
+        {/* LEFT: profile or edit form */}
         <section className="space-y-4">
           {!editing ? (
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -284,7 +291,7 @@ export default function ContactDetailClient({ initialContact }: Props) {
 
           <div className="space-y-4">
             {activeTab === "timeline" && (
-              <ContactTimelineCard contactId={contact.id} />
+              <ContactOpenHomeTimeline activities={openHomeActivities} />
             )}
             {activeTab === "tasks" && (
               <ContactTasksCard contactId={contact.id} />

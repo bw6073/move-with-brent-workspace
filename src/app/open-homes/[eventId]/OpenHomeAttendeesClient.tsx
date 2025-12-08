@@ -18,6 +18,7 @@ export type Attendee = {
   research_visit: boolean;
   mailing_list_opt_in: boolean;
   notes: string | null;
+  contact_id: number | null;
 };
 
 type Props = {
@@ -32,7 +33,11 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
   const [editPhone, setEditPhone] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [saving, setSaving] = useState(false);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
 
+  // -------------------
+  // Editing logic
+  // -------------------
   const startEdit = (attendee: Attendee) => {
     setEditingId(attendee.id);
     setEditNotes(attendee.notes || "");
@@ -71,7 +76,8 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
         return;
       }
 
-      const { attendee } = (await res.json()) as { attendee: Attendee };
+      const { attendee } = await res.json();
+
       setAttendees((prev) =>
         prev.map((a) => (a.id === attendee.id ? attendee : a))
       );
@@ -81,6 +87,9 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
     }
   };
 
+  // -------------------
+  // Delete attendee
+  // -------------------
   const deleteAttendee = async (attendee: Attendee) => {
     const ok = window.confirm(
       `Delete attendee ${attendee.first_name} ${attendee.last_name}?`
@@ -89,9 +98,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
 
     const res = await fetch(
       `/api/open-homes/${eventId}/attendees/${attendee.id}`,
-      {
-        method: "DELETE",
-      }
+      { method: "DELETE" }
     );
 
     if (!res.ok && res.status !== 204) {
@@ -101,12 +108,51 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
     }
 
     setAttendees((prev) => prev.filter((a) => a.id !== attendee.id));
+    if (editingId === attendee.id) cancelEdit();
+  };
 
-    if (editingId === attendee.id) {
-      cancelEdit();
+  // -------------------
+  // Convert to Contact (fixed)
+  // -------------------
+  const convertToContact = async (attendee: Attendee) => {
+    if (attendee.contact_id) {
+      alert("This attendee is already linked to a contact.");
+      return;
+    }
+
+    setConvertingId(attendee.id);
+
+    try {
+      const res = await fetch(
+        `/api/open-homes/${eventId}/attendees/${attendee.id}/convert-to-contact`,
+        { method: "POST" }
+      );
+
+      if (!res.ok) {
+        console.error(
+          "Failed to convert attendee to contact",
+          await res.text()
+        );
+        alert("Something went wrong converting to a contact.");
+        return;
+      }
+
+      const { contactId } = await res.json();
+
+      // 🔥 Update ONLY the contact_id field
+      setAttendees((prev) =>
+        prev.map((a) =>
+          a.id === attendee.id ? { ...a, contact_id: contactId } : a
+        )
+      );
+
+      alert("Contact created and linked to this attendee.");
+    } finally {
+      setConvertingId(null);
     }
   };
 
+  // Helpers
   const roleLabel = (a: Attendee) => {
     if (a.is_buyer && a.is_seller) return "Buyer & Seller";
     if (a.is_buyer) return "Buyer";
@@ -116,6 +162,9 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
 
   const total = attendees.length;
 
+  // -------------------
+  // UI
+  // -------------------
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -140,48 +189,50 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
       ) : (
         <div className="overflow-x-auto rounded-xl border border-zinc-200">
           <table className="min-w-full text-sm">
-            <thead className="bg-zinc-50 border-b border-zinc-200">
+            <thead className="border-b border-zinc-200 bg-zinc-50">
               <tr>
-                <th className="text-left px-3 py-2">Name</th>
-                <th className="text-left px-3 py-2">Contact</th>
-                <th className="text-left px-3 py-2">Role</th>
-                <th className="text-left px-3 py-2">Lead source</th>
-                <th className="text-left px-3 py-2">Research?</th>
-                <th className="text-left px-3 py-2">Mailing list</th>
-                <th className="text-left px-3 py-2">Checked in</th>
-                <th className="text-left px-3 py-2">Notes</th>
-                <th className="text-left px-3 py-2">Actions</th>
+                <th className="px-3 py-2 text-left">Name</th>
+                <th className="px-3 py-2 text-left">Contact</th>
+                <th className="px-3 py-2 text-left">Role</th>
+                <th className="px-3 py-2 text-left">Lead source</th>
+                <th className="px-3 py-2 text-left">Research?</th>
+                <th className="px-3 py-2 text-left">Mailing list</th>
+                <th className="px-3 py-2 text-left">Checked in</th>
+                <th className="px-3 py-2 text-left">Notes</th>
+                <th className="px-3 py-2 text-left">Actions</th>
               </tr>
             </thead>
+
             <tbody>
               {attendees.map((a) => {
                 const created = new Date(a.created_at);
-
                 const lead =
                   a.lead_source === "Other" && a.lead_source_other
                     ? `Other (${a.lead_source_other})`
                     : a.lead_source || "-";
 
                 const isEditing = editingId === a.id;
+                const isConverting = convertingId === a.id;
 
                 return (
                   <tr key={a.id} className="border-b border-zinc-100 align-top">
                     <td className="px-3 py-2 whitespace-nowrap">
                       {a.first_name} {a.last_name}
                     </td>
+
                     <td className="px-3 py-2">
                       {isEditing ? (
                         <div className="space-y-1">
                           <input
-                            className="border rounded px-2 py-1 w-full text-xs"
                             value={editPhone}
                             onChange={(e) => setEditPhone(e.target.value)}
+                            className="w-full rounded border px-2 py-1 text-xs"
                             placeholder="Phone"
                           />
                           <input
-                            className="border rounded px-2 py-1 w-full text-xs"
                             value={editEmail}
                             onChange={(e) => setEditEmail(e.target.value)}
+                            className="w-full rounded border px-2 py-1 text-xs"
                             placeholder="Email"
                           />
                         </div>
@@ -194,16 +245,15 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
                             </div>
                           )}
                           {!a.phone && !a.email && (
-                            <div className="text-zinc-400 text-xs">
+                            <div className="text-xs text-zinc-400">
                               No contact details
                             </div>
                           )}
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {roleLabel(a)}
-                    </td>
+
+                    <td className="px-3 py-2">{roleLabel(a)}</td>
                     <td className="px-3 py-2">{lead}</td>
                     <td className="px-3 py-2">
                       {a.research_visit ? "Yes" : "No"}
@@ -211,20 +261,23 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
                     <td className="px-3 py-2">
                       {a.mailing_list_opt_in ? "Yes" : "No"}
                     </td>
+
                     <td className="px-3 py-2 whitespace-nowrap">
                       {format(created, "d MMM yyyy, h:mm a")}
                     </td>
+
                     <td className="px-3 py-2 max-w-xs whitespace-pre-wrap">
                       {isEditing ? (
                         <textarea
-                          className="border rounded px-2 py-1 w-full text-xs min-h-[60px]"
                           value={editNotes}
                           onChange={(e) => setEditNotes(e.target.value)}
+                          className="w-full rounded border px-2 py-1 text-xs min-h-[60px]"
                         />
                       ) : (
                         a.notes || "-"
                       )}
                     </td>
+
                     <td className="px-3 py-2 whitespace-nowrap text-xs">
                       {isEditing ? (
                         <div className="flex flex-col gap-1">
@@ -232,10 +285,11 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
                             type="button"
                             onClick={saveEdit}
                             disabled={saving}
-                            className="rounded bg-blue-600 text-white px-2 py-1 disabled:opacity-60"
+                            className="rounded bg-blue-600 px-2 py-1 text-white disabled:opacity-60"
                           >
                             {saving ? "Saving…" : "Save"}
                           </button>
+
                           <button
                             type="button"
                             onClick={cancelEdit}
@@ -253,12 +307,30 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
                           >
                             Edit
                           </button>
+
                           <button
                             type="button"
                             onClick={() => deleteAttendee(a)}
                             className="text-red-600 hover:underline"
                           >
                             Delete
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => convertToContact(a)}
+                            disabled={!!a.contact_id || isConverting}
+                            className={
+                              a.contact_id
+                                ? "cursor-not-allowed text-zinc-400"
+                                : "text-emerald-600 hover:underline"
+                            }
+                          >
+                            {a.contact_id
+                              ? "Linked to contact"
+                              : isConverting
+                              ? "Converting…"
+                              : "Convert to contact"}
                           </button>
                         </div>
                       )}

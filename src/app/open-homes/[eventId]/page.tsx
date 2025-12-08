@@ -40,14 +40,13 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
   const isNotFound = (eventError as any)?.code === "PGRST116";
 
   if (eventError || !event) {
-    // Only log unexpected errors, not "no rows" after delete
     if (!isNotFound) {
       console.error("Error loading open_home_event", eventError);
     }
 
     return (
       <div className="p-6 space-y-3">
-        <h1 className="text-2xl font-semibold mb-2">Open Home</h1>
+        <h1 className="mb-2 text-2xl font-semibold">Open Home</h1>
         <p className="text-red-600">
           {isNotFound
             ? "This open home could not be found. It may have been deleted."
@@ -55,7 +54,7 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
         </p>
         <Link
           href="/open-homes"
-          className="inline-flex mt-2 text-sm text-blue-600 hover:underline"
+          className="mt-2 inline-flex text-sm text-blue-600 hover:underline"
         >
           ← Back to open homes
         </Link>
@@ -78,7 +77,22 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
   const { data: attendeesData = [] } = await supabase
     .from("open_home_attendees")
     .select(
-      "id, created_at, first_name, last_name, phone, email, lead_source, lead_source_other, is_buyer, is_seller, research_visit, mailing_list_opt_in, notes"
+      `
+        id,
+        created_at,
+        first_name,
+        last_name,
+        phone,
+        email,
+        lead_source,
+        lead_source_other,
+        is_buyer,
+        is_seller,
+        research_visit,
+        mailing_list_opt_in,
+        notes,
+        contact_id
+      `
     )
     .eq("event_id", event.id)
     .order("created_at", { ascending: true })
@@ -100,13 +114,13 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold mb-1">
+          <h1 className="mb-1 text-2xl font-semibold">
             {event.title || "Open Home"}
           </h1>
           <p className="text-sm text-zinc-600">{propertyLabel}</p>
-          <p className="text-sm text-zinc-600 mt-1">
+          <p className="mt-1 text-sm text-zinc-600">
             {formatDateTime(event.start_at)}
             {event.end_at ? ` – ${formatDateTime(event.end_at)}` : ""}
           </p>
@@ -116,20 +130,20 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
           <div className="flex gap-2">
             <Link
               href={`/open-homes/${event.id}/edit`}
-              className="inline-flex items-center rounded-full border border-zinc-300 text-sm font-medium px-4 py-2 hover:border-blue-500 hover:text-blue-600"
+              className="inline-flex items-center rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium hover:border-blue-500 hover:text-blue-600"
             >
               Edit
             </Link>
             <Link
               href={kioskUrl}
               target="_blank"
-              className="inline-flex items-center rounded-full bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700"
+              className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               Launch kiosk
             </Link>
             <DeleteEventButton eventId={event.id} />
           </div>
-          <p className="text-xs text-zinc-500 max-w-xs text-right">
+          <p className="max-w-xs text-right text-xs text-zinc-500">
             Open the kiosk link on your iPad/iPhone at the home open for visitor
             check-ins.
           </p>
