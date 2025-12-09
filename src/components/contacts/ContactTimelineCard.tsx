@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState } from "react";
 import type { ContactActivity } from "./ContactActivityCard";
+import type { ContactOpenHomeActivity } from "./ContactOpenHomeTimeline";
 
 type ContactTask = {
   id: number;
@@ -138,6 +139,12 @@ type TimelineItem =
       id: string;
       sortDate: string;
       appraisal: ContactAppraisal;
+    }
+  | {
+      kind: "open_home";
+      id: string;
+      sortDate: string;
+      openHome: ContactOpenHomeActivity;
     };
 
 const PAGE_SIZE = 20;
@@ -158,29 +165,33 @@ function ContactTimelineCard({ contactId }: Props) {
         setError(null);
         setVisibleCount(PAGE_SIZE); // reset when switching contact
 
-        const [tasksRes, activitiesRes, notesRes, appraisalsRes] =
+        const [tasksRes, activitiesRes, notesRes, appraisalsRes, openHomesRes] =
           await Promise.all([
             fetch(`/api/contacts/${contactId}/tasks`),
             fetch(`/api/contact-activities?contactId=${contactId}`),
             fetch(`/api/contacts/${contactId}/notes`),
             fetch(`/api/appraisals?contactId=${contactId}`),
+            fetch(`/api/contacts/${contactId}/open-home-attendances`),
           ]);
 
         if (
           !tasksRes.ok ||
           !activitiesRes.ok ||
           !notesRes.ok ||
-          !appraisalsRes.ok
+          !appraisalsRes.ok ||
+          !openHomesRes.ok
         ) {
           const tText = await tasksRes.text().catch(() => "");
           const aText = await activitiesRes.text().catch(() => "");
           const nText = await notesRes.text().catch(() => "");
           const apText = await appraisalsRes.text().catch(() => "");
+          const ohText = await openHomesRes.text().catch(() => "");
           console.error("Failed to load timeline data:", {
             tasks: tText,
             activities: aText,
             notes: nText,
             appraisals: apText,
+            openHomes: ohText,
           });
           if (!cancelled) {
             setError("Could not load timeline activity.");
@@ -189,12 +200,14 @@ function ContactTimelineCard({ contactId }: Props) {
           return;
         }
 
-        const [tasksJson, actsJson, notesJson, appJson] = await Promise.all([
-          tasksRes.json().catch(() => null),
-          activitiesRes.json().catch(() => null),
-          notesRes.json().catch(() => null),
-          appraisalsRes.json().catch(() => null),
-        ]);
+        const [tasksJson, actsJson, notesJson, appJson, openHomesJson] =
+          await Promise.all([
+            tasksRes.json().catch(() => null),
+            activitiesRes.json().catch(() => null),
+            notesRes.json().catch(() => null),
+            appraisalsRes.json().catch(() => null),
+            openHomesRes.json().catch(() => null),
+          ]);
 
         let tasks: ContactTask[] = [];
         if (Array.isArray(tasksJson)) {
@@ -220,6 +233,12 @@ function ContactTimelineCard({ contactId }: Props) {
           appraisals = appJson.items as ContactAppraisal[];
         }
 
+        const openHomes: ContactOpenHomeActivity[] = Array.isArray(
+          openHomesJson?.items
+        )
+          ? openHomesJson.items
+          : [];
+
         const combined: TimelineItem[] = [
           ...tasks.map((t) => ({
             kind: "task" as const,
@@ -244,6 +263,12 @@ function ContactTimelineCard({ contactId }: Props) {
             id: `appraisal-${ap.id}`,
             sortDate: ap.created_at ?? "",
             appraisal: ap,
+          })),
+          ...openHomes.map((oh) => ({
+            kind: "open_home" as const,
+            id: `openhome-${oh.attendeeId}`,
+            sortDate: oh.attendedAt ?? "",
+            openHome: oh,
           })),
         ].filter((x) => x.sortDate);
 
@@ -283,7 +308,7 @@ function ContactTimelineCard({ contactId }: Props) {
           <h2 className="text-sm font-semibold text-slate-900">Timeline</h2>
           <p className="text-xs text-slate-500">
             Unified history for this contact (tasks, calls, emails, notes,
-            appraisals).
+            appraisals, open homes).
           </p>
         </div>
         {!loading && allItems.length > 0 && (
@@ -305,8 +330,8 @@ function ContactTimelineCard({ contactId }: Props) {
 
       {!loading && !error && allItems.length === 0 && (
         <p className="text-xs text-slate-500">
-          No activity yet. Add a task, log a call/email, write a note or create
-          an appraisal to start the timeline.
+          No activity yet. Add a task, log a call/email, write a note, create an
+          appraisal or record an open home to start the timeline.
         </p>
       )}
 
@@ -445,6 +470,56 @@ function ContactTimelineCard({ contactId }: Props) {
                       <div className="text-[11px] text-slate-800 whitespace-pre-wrap">
                         {note.note}
                       </div>
+                    </div>
+                  </li>
+                );
+              }
+
+              // OPEN HOME
+              if (item.kind === "open_home") {
+                const oh = item.openHome;
+                return (
+                  <li key={item.id} className="relative pl-2">
+                    <span className="absolute -left-[9px] mt-1.5 h-2.5 w-2.5 rounded-full border border-slate-300 bg-white" />
+                    <div className="flex flex-col gap-1 rounded-md bg-indigo-50/70 p-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          Open home
+                        </span>
+                        {oh.roleLabel && (
+                          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] text-indigo-700">
+                            {oh.roleLabel}
+                          </span>
+                        )}
+                        <span className="ml-auto text-[10px] text-slate-500">
+                          {oh.attendedAt
+                            ? formatDateTime(oh.attendedAt)
+                            : "No date"}
+                        </span>
+                      </div>
+
+                      <div className="text-[13px] font-medium text-slate-900">
+                        {oh.eventTitle}
+                      </div>
+
+                      {oh.propertyLabel && (
+                        <div className="text-[11px] text-slate-700">
+                          {oh.propertyLabel}
+                        </div>
+                      )}
+
+                      {oh.leadSource && (
+                        <div className="text-[10px] text-slate-500">
+                          <span className="font-semibold">Lead source: </span>
+                          {oh.leadSource}
+                        </div>
+                      )}
+
+                      {oh.notes && (
+                        <div className="text-[11px] text-slate-700">
+                          {oh.notes}
+                        </div>
+                      )}
                     </div>
                   </li>
                 );

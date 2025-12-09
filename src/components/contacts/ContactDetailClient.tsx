@@ -10,14 +10,10 @@ import { ContactNotesCard } from "./ContactNotesCard";
 import { ContactActivityCard } from "./ContactActivityCard";
 import { ContactTasksCard } from "./ContactTasksCard";
 import { ContactLinkedContactsCard } from "./ContactLinkedContactsCard";
-import {
-  ContactOpenHomeTimeline,
-  type ContactOpenHomeActivity,
-} from "./ContactOpenHomeTimeline";
+import { ContactTimelineCard } from "./ContactTimelineCard";
 
 type Props = {
   initialContact: Contact;
-  openHomeActivities: ContactOpenHomeActivity[];
 };
 
 const getDisplayName = (c: Contact): string =>
@@ -54,10 +50,7 @@ const formatDate = (iso: string | null | undefined): string => {
   return `${date} ${time}`;
 };
 
-export default function ContactDetailClient({
-  initialContact,
-  openHomeActivities,
-}: Props) {
+export default function ContactDetailClient({ initialContact }: Props) {
   const [contact, setContact] = useState<Contact>(initialContact);
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<RightTab>("timeline");
@@ -291,7 +284,7 @@ export default function ContactDetailClient({
 
           <div className="space-y-4">
             {activeTab === "timeline" && (
-              <ContactOpenHomeTimeline activities={openHomeActivities} />
+              <ContactTimelineCard contactId={contact.id} />
             )}
             {activeTab === "tasks" && (
               <ContactTasksCard contactId={contact.id} />
