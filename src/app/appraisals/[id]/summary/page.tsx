@@ -8,6 +8,7 @@ import {
   type FormState,
 } from "@/components/appraisal/config/types";
 import { AppraisalSummaryClient } from "./AppraisalSummaryClient";
+import { AppraisalPhotoPrintGrid } from "@/components/appraisal/AppraisalPhotoPrintGrid";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -87,8 +88,11 @@ export default async function AppraisalSummaryPage(props: PageProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-6">
+      <main className="mx-auto max-w-5xl px-6 py-6 space-y-8">
         <AppraisalSummaryClient {...({ appraisal: data, form } as any)} />
+
+        {/* Printable photo grid */}
+        <AppraisalPhotoPrintGrid appraisalId={data.id} />
       </main>
     </div>
   );

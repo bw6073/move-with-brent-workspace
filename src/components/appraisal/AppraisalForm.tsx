@@ -692,7 +692,7 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
 
         {/* ✅ NEW: Photos + attachments section for EDIT mode */}
         {mode === "edit" && typeof appraisalId === "number" && (
-          <div className="mt-8 space-y-4">
+          <div className="mt-10 border-t pt-6 space-y-4">
             <PhotoManager entityType="appraisal" entityId={appraisalId} />
             <AttachmentManager entityType="appraisal" entityId={appraisalId} />
           </div>

@@ -3,6 +3,12 @@
 
 import React, { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd";
 
 type EntityType = "property" | "appraisal";
 
@@ -20,9 +26,6 @@ type Props = {
   entityType: EntityType;
   entityId: number;
 };
-
-// Size of each thumbnail square (px)
-const THUMB_SIZE = 160;
 
 const PRESET_AREAS = [
   "General",
@@ -54,6 +57,8 @@ const PRESET_AREAS = [
   "Other",
 ];
 
+const THUMB_WIDTH = 300;
+
 export function PhotoManager({ entityType, entityId }: Props) {
   const supabase = createClient();
 
@@ -62,27 +67,30 @@ export function PhotoManager({ entityType, entityId }: Props) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedArea, setSelectedArea] = useState<string>("General");
-  const [customArea, setCustomArea] = useState<string>("");
+  const [selectedArea, setSelectedArea] = useState("General");
+  const [customArea, setCustomArea] = useState("");
 
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
 
-  // -------------------------------------------------------------------
-  // Load photos for this entity
-  // -------------------------------------------------------------------
   async function loadPhotos() {
     setLoading(true);
     setError(null);
-
     try {
       const res = await fetch(
         `/api/photos?entityType=${entityType}&entityId=${entityId}`
       );
       const json = await res.json();
-
       if (!res.ok) throw new Error(json.error || "Failed to load photos");
 
-      setPhotos(json.photos ?? []);
+      const list: Photo[] = json.photos ?? [];
+
+      setPhotos(
+        list.slice().sort((a, b) => {
+          if (a.is_primary && !b.is_primary) return -1;
+          if (!a.is_primary && b.is_primary) return 1;
+          return a.sort_order - b.sort_order;
+        })
+      );
     } catch (err: any) {
       console.error(err);
       setError(err.message ?? "Error loading photos");
@@ -95,19 +103,13 @@ export function PhotoManager({ entityType, entityId }: Props) {
     void loadPhotos();
   }, [entityType, entityId]);
 
-  // -------------------------------------------------------------------
-  // Area label helper
-  // -------------------------------------------------------------------
-  function currentAreaLabel() {
+  const areaLabel = () => {
     if (selectedArea === "Other" && customArea.trim() !== "") {
       return customArea.trim();
     }
     return selectedArea;
-  }
+  };
 
-  // -------------------------------------------------------------------
-  // Upload handler
-  // -------------------------------------------------------------------
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files?.length) return;
@@ -121,30 +123,24 @@ export function PhotoManager({ entityType, entityId }: Props) {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user) {
-        throw new Error("You must be logged in");
-      }
+      if (!user || userError) throw new Error("Not logged in");
 
-      const existingCount = photos.length;
-      const areaLabel = currentAreaLabel();
+      const existing = photos.length;
+      const label = areaLabel();
 
       for (const [index, file] of Array.from(files).entries()) {
         const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-        const timestamp = Date.now();
-        const sortOrder = existingCount + index;
+        const storagePath = `${
+          user.id
+        }/${entityType}/${entityId}/${Date.now()}-${safeName}`;
+        const sortOrder = existing + index;
 
-        const storagePath = `${user.id}/${entityType}/${entityId}/${sortOrder}-${timestamp}-${safeName}`;
-
-        // Upload file to supabase storage
-        const { error: uploadError } = await supabase.storage
+        const { error: uploadErr } = await supabase.storage
           .from("photos")
-          .upload(storagePath, file, {
-            upsert: false,
-          });
+          .upload(storagePath, file, { cacheControl: "3600", upsert: false });
 
-        if (uploadError) throw uploadError;
+        if (uploadErr) throw uploadErr;
 
-        // Insert DB reference
         const res = await fetch("/api/photos", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -155,139 +151,149 @@ export function PhotoManager({ entityType, entityId }: Props) {
             storagePath,
             sortOrder,
             caption: null,
-            areaLabel,
+            areaLabel: label,
           }),
         });
 
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Failed to save photo");
+        if (!res.ok) throw new Error("Failed to save photo");
       }
 
       await loadPhotos();
       e.target.value = "";
     } catch (err: any) {
       console.error(err);
-      setError(err.message ?? "Error uploading photos");
+      setError(err.message ?? "Upload error");
     } finally {
       setUploading(false);
     }
   }
 
-  // -------------------------------------------------------------------
-  // Thumbnail URL — square crop for consistent grid
-  // -------------------------------------------------------------------
-  function getThumbUrl(photo: Photo) {
-    const { data } = supabase.storage
-      .from(photo.bucket)
-      .getPublicUrl(photo.storage_path, {
-        transform: {
-          width: THUMB_SIZE,
-          height: THUMB_SIZE,
-          resize: "cover", // this ensures no slits and no weird proportions
-          quality: 80,
-        },
-      });
+  // -------- DRAG + DROP (updated logging) --------
+  async function handleDragEnd(result: DropResult) {
+    if (!result.destination) return;
 
-    return data.publicUrl;
-  }
+    const updated = Array.from(photos);
+    const [moved] = updated.splice(result.source.index, 1);
+    updated.splice(result.destination.index, 0, moved);
 
-  // Full resolution for lightbox
-  function getFullUrl(photo: Photo) {
-    const { data } = supabase.storage
-      .from(photo.bucket)
-      .getPublicUrl(photo.storage_path);
+    setPhotos(updated);
 
-    return data.publicUrl;
-  }
-
-  // -------------------------------------------------------------------
-  // Set primary photo
-  // -------------------------------------------------------------------
-  async function setPrimary(photoId: number) {
     try {
-      const res = await fetch("/api/photos/primary", {
+      const res = await fetch("/api/photos/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entityType, entityId, photoId }),
+        body: JSON.stringify({
+          entityType,
+          entityId,
+          photoIdsInOrder: updated.map((p) => p.id),
+        }),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-
-      await loadPhotos();
-    } catch (err: any) {
+      if (!res.ok) {
+        let message = "Failed to save photo order";
+        try {
+          const body = await res.json();
+          if (body?.error) message = body.error;
+        } catch {
+          // ignore JSON parse issues, keep default message
+        }
+        console.error("Reorder error", res.status, message);
+        setError(message);
+      }
+    } catch (err) {
       console.error(err);
-      setError(err.message);
+      setError("Error saving photo order");
     }
   }
 
-  // -------------------------------------------------------------------
-  // Delete photo
-  // -------------------------------------------------------------------
   async function deletePhoto(photoId: number) {
-    if (!window.confirm("Delete this photo?")) return;
+    const res = await fetch(`/api/photos/${photoId}`, {
+      method: "DELETE",
+    });
 
-    try {
-      const res = await fetch(`/api/photos/${photoId}`, { method: "DELETE" });
-      const json = await res.json();
-
-      if (!res.ok) throw new Error(json.error);
-
-      if (lightboxPhoto?.id === photoId) setLightboxPhoto(null);
-
-      await loadPhotos();
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message);
+    if (!res.ok) {
+      console.error(await res.text());
+      setError("Failed to delete photo");
+      return;
     }
+
+    if (lightboxPhoto?.id === photoId) setLightboxPhoto(null);
+
+    await loadPhotos();
   }
+
+  async function setPrimary(photoId: number) {
+    const res = await fetch(`/api/photos/primary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entityType, entityId, photoId }),
+    });
+
+    if (!res.ok) {
+      console.error(await res.text());
+      setError("Failed to update primary photo");
+      return;
+    }
+
+    await loadPhotos();
+  }
+
+  const getThumbUrl = (p: Photo) =>
+    supabase.storage.from(p.bucket).getPublicUrl(p.storage_path, {
+      transform: {
+        width: THUMB_WIDTH,
+        height: Math.round((THUMB_WIDTH * 3) / 4),
+        resize: "contain",
+        quality: 80,
+      },
+    }).data.publicUrl;
+
+  const getFullUrl = (p: Photo) =>
+    supabase.storage.from(p.bucket).getPublicUrl(p.storage_path).data.publicUrl;
 
   const title =
     entityType === "appraisal" ? "Appraisal photos" : "Property photos";
 
-  // -------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------
   return (
     <>
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
-        {/* Header */}
+        {/* Header row */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
 
-          <div className="flex items-center gap-2">
-            {/* Area selector */}
-            <select
-              value={selectedArea}
-              onChange={(e) => setSelectedArea(e.target.value)}
-              className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs"
-            >
-              {PRESET_AREAS.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-600">Area</label>
+              <select
+                value={selectedArea}
+                onChange={(e) => setSelectedArea(e.target.value)}
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-800"
+              >
+                {PRESET_AREAS.map((a) => (
+                  <option key={a}>{a}</option>
+                ))}
+              </select>
+              {selectedArea === "Other" && (
+                <input
+                  type="text"
+                  value={customArea}
+                  onChange={(e) => setCustomArea(e.target.value)}
+                  placeholder="Custom area"
+                  className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-800"
+                />
+              )}
+            </div>
 
-            {/* Custom text field */}
-            {selectedArea === "Other" && (
-              <input
-                value={customArea}
-                onChange={(e) => setCustomArea(e.target.value)}
-                placeholder="e.g. Workshop"
-                className="h-8 rounded-lg border border-slate-300 px-2 text-xs"
-              />
-            )}
-
-            {/* Upload button */}
-            <label className="cursor-pointer rounded-xl border border-slate-300 bg-slate-50 px-3 py-1 text-xs hover:bg-slate-100">
-              {uploading ? "Saving…" : "Take / add photos"}
+            <label className="inline-flex cursor-pointer items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100">
+              <span>{uploading ? "Saving…" : "Add / take photos"}</span>
               <input
                 type="file"
                 accept="image/*"
                 multiple
+                capture="environment"
                 className="hidden"
                 onChange={handleUpload}
+                disabled={uploading}
               />
             </label>
           </div>
@@ -295,101 +301,117 @@ export function PhotoManager({ entityType, entityId }: Props) {
 
         {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
 
-        {/* Photo Grid */}
-        {loading ? (
+        {loading && photos.length === 0 && (
           <p className="text-sm text-slate-500">Loading photos…</p>
-        ) : photos.length === 0 ? (
+        )}
+
+        {!loading && photos.length === 0 && (
           <p className="text-sm text-slate-500">
-            No photos yet. Use the button above to add some.
+            No photos yet. Choose an area and tap &ldquo;Add / take
+            photos&rdquo;.
           </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            {photos
-              .slice()
-              .sort((a, b) => a.sort_order - b.sort_order)
-              .map((photo) => (
+        )}
+
+        {photos.length > 0 && (
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <Droppable droppableId="photo-grid" direction="horizontal">
+              {(provided) => (
                 <div
-                  key={photo.id}
-                  className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3"
                 >
-                  {/* Thumbnail square */}
-                  <button
-                    className="block w-full"
-                    onClick={() => setLightboxPhoto(photo)}
-                  >
-                    <div
-                      style={{
-                        width: THUMB_SIZE,
-                        height: THUMB_SIZE,
-                      }}
-                      className="mx-auto flex items-center justify-center overflow-hidden rounded-xl bg-slate-200"
+                  {photos.map((photo, index) => (
+                    <Draggable
+                      key={photo.id}
+                      draggableId={String(photo.id)}
+                      index={index}
                     >
-                      <img
-                        src={getThumbUrl(photo)}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                  </button>
+                      {(provided) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          style={provided.draggableProps.style}
+                          className="group relative cursor-grab rounded-2xl border border-slate-200 bg-slate-50 p-2 active:cursor-grabbing"
+                        >
+                          <button
+                            type="button"
+                            className="block w-full"
+                            onClick={() => setLightboxPhoto(photo)}
+                          >
+                            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-slate-200">
+                              <img
+                                src={getThumbUrl(photo)}
+                                alt={
+                                  photo.caption ?? photo.area_label ?? "Photo"
+                                }
+                                draggable={false}
+                                className="absolute inset-0 h-full w-full object-contain bg-slate-200"
+                              />
+                            </div>
+                          </button>
 
-                  {/* Label chip */}
-                  <div className="absolute left-2 top-2 rounded bg-black/60 px-2 py-0.5 text-[10px] text-white">
-                    {photo.area_label}
-                  </div>
+                          <span className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
+                            {photo.area_label ?? "General"}
+                          </span>
 
-                  {/* Controls */}
-                  <div className="absolute bottom-0 left-0 right-0 flex justify-between bg-black/40 px-2 py-1 text-[10px] text-white">
-                    {photo.is_primary ? (
-                      <span>Primary</span>
-                    ) : (
-                      <button
-                        className="rounded bg-white/90 px-2 py-0.5 text-xs text-black"
-                        onClick={() => setPrimary(photo.id)}
-                      >
-                        Set primary
-                      </button>
-                    )}
-
-                    <button
-                      className="rounded bg-red-500/90 px-2 py-0.5 text-xs"
-                      onClick={() => deletePhoto(photo.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
+                          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                            <div className="text-xs text-slate-600">
+                              {photo.is_primary ? "Primary photo" : "\u00A0"}
+                            </div>
+                            <div className="flex gap-1">
+                              {!photo.is_primary && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPrimary(photo.id)}
+                                  className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-slate-700"
+                                >
+                                  Set primary
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => deletePhoto(photo.id)}
+                                className="rounded bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-red-700"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
                 </div>
-              ))}
-          </div>
+              )}
+            </Droppable>
+          </DragDropContext>
         )}
       </div>
 
-      {/* Lightbox */}
       {lightboxPhoto && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4"
           onClick={() => setLightboxPhoto(null)}
         >
           <div
-            className="relative max-h-full max-w-4xl"
+            className="relative max-h-[90vh] max-w-4xl"
             onClick={(e) => e.stopPropagation()}
           >
             <img
               src={getFullUrl(lightboxPhoto)}
-              className="max-h-[80vh] max-w-full rounded-xl object-contain"
-              alt=""
+              alt={lightboxPhoto.caption ?? lightboxPhoto.area_label ?? "Photo"}
+              className="max-h-[85vh] w-auto max-w-full rounded-xl object-contain"
             />
             <button
-              className="absolute right-2 top-2 rounded bg-black/70 px-3 py-1 text-white"
+              type="button"
+              className="absolute right-2 top-2 rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white"
               onClick={() => setLightboxPhoto(null)}
             >
               Close
             </button>
-
-            {lightboxPhoto.area_label && (
-              <div className="absolute left-2 bottom-2 rounded bg-black/70 px-3 py-1 text-white text-xs">
-                {lightboxPhoto.area_label}
-              </div>
-            )}
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@
 import React from "react";
 import jsPDF from "jspdf";
 import type { FormState } from "@/components/appraisal/config/types";
+import { AppraisalPhotoPrintGrid } from "@/components/appraisal/AppraisalPhotoPrintGrid";
 
 type AppraisalRecord = {
   id: number;
@@ -152,6 +153,11 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     );
     y = 80;
     doc.setFontSize(10);
+
+    {
+      /* PHOTO GRID (print-friendly) */
+    }
+    <AppraisalPhotoPrintGrid appraisalId={appraisal.id} />;
 
     // 1. Overview
     addSectionTitle("1. Overview");
