@@ -1,7 +1,6 @@
 // src/app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.css";
-import { AppShell } from "@/components/layout/AppShell";
 import { ServiceWorkerRegister } from "@/components/layout/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
@@ -35,9 +34,9 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         {/* NOTE: no <link rel="manifest"> here on purpose */}
       </head>
-      <body>
+      <body className="min-h-screen bg-slate-50">
         <ServiceWorkerRegister />
-        <AppShell>{children}</AppShell>
+        {children}
       </body>
     </html>
   );

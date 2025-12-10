@@ -1,4 +1,4 @@
-// app/open-homes/page.tsx
+// src/app/(app)/open-homes/page.tsx
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 
@@ -19,6 +19,9 @@ type OpenHomeRow = {
 
 export default async function OpenHomesIndexPage() {
   const supabase = await createClient();
+
+  // (Auth is already enforced by (app)/layout,
+  // so we don't *need* to check user here for visibility.)
 
   const { data, error } = await supabase
     .from("open_home_events")
@@ -142,7 +145,7 @@ export default async function OpenHomesIndexPage() {
                           })
                         : "—"}
                     </td>
-                    <td className="px-3 py-2 align-top text-slate-500 max-w-xs">
+                    <td className="max-w-xs px-3 py-2 align-top text-slate-500">
                       <span className="line-clamp-2">{event.notes || "—"}</span>
                     </td>
                     <td className="px-3 py-2 align-top text-right">

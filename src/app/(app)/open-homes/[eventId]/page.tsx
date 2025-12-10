@@ -1,4 +1,4 @@
-// app/open-homes/[eventId]/page.tsx
+// src/app/(app)/open-homes/[eventId]/page.tsx
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -36,31 +36,29 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
   const { eventId } = await props.params;
   const supabase = await createClient();
 
-  // 1) Load the event
+  // 1) Load the event (use maybeSingle so "no row" is not treated as an error)
   const { data: event, error: eventError } = await supabase
     .from("open_home_events")
     .select("id, property_id, title, start_at, end_at, notes")
     .eq("id", eventId)
-    .single<OpenHomeEvent>();
+    .maybeSingle<OpenHomeEvent>();
 
-  const isNotFound = (eventError as any)?.code === "PGRST116";
-
-  if (eventError || !event) {
-    if (!isNotFound) {
+  if (!event) {
+    // Only log *real* errors, not the "no row" case
+    if (eventError) {
       console.error("Error loading open_home_event", eventError);
     }
 
     return (
-      <div className="mx-auto max-w-5xl px-6 py-6 space-y-3">
-        <h1 className="text-2xl font-semibold mb-2">Open home</h1>
+      <div className="mx-auto max-w-5xl space-y-3 px-6 py-6">
+        <h1 className="mb-2 text-2xl font-semibold">Open home</h1>
         <p className="text-red-600">
-          {isNotFound
-            ? "This open home could not be found. It may have been deleted."
-            : "Could not load this open home."}
+          This open home could not be found. It may have been deleted or the
+          link is no longer valid.
         </p>
         <Link
           href="/open-homes"
-          className="inline-flex mt-2 text-sm text-blue-600 hover:underline"
+          className="mt-2 inline-flex text-sm text-blue-600 hover:underline"
         >
           ← Back to open homes
         </Link>
@@ -73,7 +71,7 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
     .from("properties")
     .select("id, street_address, suburb, state, postcode")
     .eq("id", event.property_id)
-    .single<Property>();
+    .maybeSingle<Property>();
 
   const propertyLabel = property
     ? `${property.street_address}, ${property.suburb} ${property.state} ${property.postcode}`
@@ -112,7 +110,7 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
   }&propertyAddress=${encodeURIComponent(propertyLabel)}`;
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-6 space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6 px-6 py-6">
       {/* HEADER */}
       <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="space-y-1">
@@ -123,7 +121,7 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
             {event.title || "Open home"}
           </h1>
           <p className="text-sm text-slate-600">{propertyLabel}</p>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="mt-1 text-sm text-slate-500">
             {formatDateTime(event.start_at)}
             {event.end_at ? ` – ${formatDateTime(event.end_at)}` : ""}
           </p>
