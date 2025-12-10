@@ -73,27 +73,35 @@ export function PhotoManager({ entityType, entityId }: Props) {
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
 
   async function loadPhotos() {
-    setLoading(true);
-    setError(null);
     try {
-      const res = await fetch(
-        `/api/photos?entityType=${entityType}&entityId=${entityId}`
-      );
+      setLoading(true);
+      setError(null);
+
+      // If we don't have an entityId yet (new/unsaved), don't hit the API
+      if (!entityId) {
+        setPhotos([]);
+        return;
+      }
+
+      const params = new URLSearchParams({
+        entityType,
+        entityId: String(entityId),
+      });
+
+      const res = await fetch(`/api/photos?${params.toString()}`);
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load photos");
+
+      if (!res.ok) {
+        console.error("Failed to load photos", res.status, json);
+        setError(json.error || "Failed to load photos");
+        return;
+      }
 
       const list: Photo[] = json.photos ?? [];
-
-      setPhotos(
-        list.slice().sort((a, b) => {
-          if (a.is_primary && !b.is_primary) return -1;
-          if (!a.is_primary && b.is_primary) return 1;
-          return a.sort_order - b.sort_order;
-        })
-      );
+      setPhotos(list);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message ?? "Error loading photos");
+      console.error("Unexpected error loading photos", err);
+      setError(err.message || "Failed to load photos");
     } finally {
       setLoading(false);
     }

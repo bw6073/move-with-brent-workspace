@@ -24,13 +24,9 @@ import Step7PricingStrategy from "./steps/Step7PricingStrategy";
 import Step8PresentationMarketing from "./steps/Step8PresentationMarketing";
 import Step9Review from "./steps/Step9Review";
 
-import {
-  enqueueAppraisalJob,
-  processAppraisalQueue,
-  type AppraisalJobPayload,
-} from "@/lib/offline/appraisalQueue";
+import { processAppraisalQueue } from "@/lib/offline/appraisalQueue";
 
-// ✅ NEW: photos + attachments
+// ✅ photos + attachments
 import { PhotoManager } from "@/components/photos/PhotoManager";
 import { AttachmentManager } from "@/components/attachments/AttachmentManager";
 
@@ -520,52 +516,36 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
   // RENDER
   // ---------------------------------------------------------
 
+  const headerTitle =
+    (form.appraisalTitle && form.appraisalTitle.trim()) ||
+    (form.streetAddress && form.streetAddress.trim()) ||
+    "Appraisal form";
+
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-slate-900 text-center text-sm font-bold text-white leading-8">
-              B
-            </div>
-            <div>
-              <div className="text-sm font-semibold">Appraisal Capture</div>
-              <div className="text-xs text-slate-500">
-                app.sellwithbrent.com.au
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span>
-              {mode === "create" ? "New appraisal" : "Editing appraisal"}
-            </span>
-
-            {mode === "edit" && appraisalId && (
-              <Link
-                href={`/appraisals/${appraisalId}/summary`}
-                className="rounded-full border border-slate-300 px-3 py-1 font-medium text-slate-700 hover:bg-slate-100"
-              >
-                View summary
-              </Link>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-5xl px-6 py-6">
-        <div className="mb-4 flex items-center justify-between">
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+        {/* HEADER */}
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">
-              {mode === "create" ? "New appraisal" : "Edit appraisal"}
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              {mode === "edit" ? "Editing appraisal" : "New appraisal"}
+            </p>
+            <h1 className="text-xl font-semibold text-slate-900">
+              {headerTitle}
             </h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-xs text-slate-500">
               Step {step} of 9 · {stepLabel(step)}
             </p>
           </div>
-          <div className="hidden text-xs text-slate-500 sm:block">
-            Changes are saved back to your database via the API routes.
-          </div>
+
+          {mode === "edit" && typeof appraisalId === "number" && (
+            <Link
+              href={`/appraisals/${appraisalId}/summary`}
+              className="inline-flex items-center justify-center rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+            >
+              View summary
+            </Link>
+          )}
         </div>
 
         {/* Offline / sync status */}
@@ -690,9 +670,9 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
           )}
         </div>
 
-        {/* ✅ NEW: Photos + attachments section for EDIT mode */}
+        {/* Photos + attachments (edit mode only) */}
         {mode === "edit" && typeof appraisalId === "number" && (
-          <div className="mt-10 border-t pt-6 space-y-4">
+          <div className="mt-10 space-y-4 border-t pt-6">
             <PhotoManager entityType="appraisal" entityId={appraisalId} />
             <AttachmentManager entityType="appraisal" entityId={appraisalId} />
           </div>

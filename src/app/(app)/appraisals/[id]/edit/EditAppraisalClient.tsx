@@ -1,4 +1,4 @@
-// src/app/appraisals/[id]/edit/EditAppraisalClient.tsx
+// src/app/(app)/appraisals/[id]/edit/EditAppraisalClient.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -9,53 +9,71 @@ import {
 } from "@/components/appraisal/config/types";
 
 type EditAppraisalClientProps = {
-  appraisalId: string; // from the URL (string)
+  appraisalId: string; // from the URL segment
 };
 
 export default function EditAppraisalClient({
   appraisalId,
 }: EditAppraisalClientProps) {
   const [initialForm, setInitialForm] = useState<FormState | null>(null);
-  const [pk, setPk] = useState<number | null>(null); // actual DB id
+  const [pk, setPk] = useState<number | null>(null); // DB primary key
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!appraisalId) return;
+    if (!appraisalId) {
+      setError("Invalid appraisal ID.");
+      setLoading(false);
+      return;
+    }
 
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`/api/appraisals/${appraisalId}`);
-
-        if (!res.ok) {
-          const text = await res.text();
-          console.error("Failed to fetch appraisal", res.status, text);
-          setError("Failed to load appraisal.");
-          return;
-        }
+        const res = await fetch(
+          `/api/appraisals?id=${encodeURIComponent(appraisalId)}`
+        );
 
         const json = await res.json();
 
-        // Tolerate different shapes: either { appraisal: {...} } or direct row
-        const row = (json.appraisal ?? json) as any;
+        if (!res.ok) {
+          console.error("Failed to fetch appraisal", res.status, json);
+          setError(json.error || "Failed to load appraisal.");
+          return;
+        }
+
+        let row: any = null;
+
+        if (json.appraisal) {
+          row = json.appraisal;
+        } else if (
+          Array.isArray(json.appraisals) &&
+          json.appraisals.length > 0
+        ) {
+          row = json.appraisals[0];
+        } else if (Array.isArray(json) && json.length > 0) {
+          row = json[0];
+        } else if (json && typeof json === "object") {
+          row = json;
+        }
+
+        console.log("[EditAppraisalClient] Loaded appraisal JSON:", json);
+        console.log("[EditAppraisalClient] Resolved row:", row);
 
         if (!row) {
           setError("Appraisal not found.");
           return;
         }
 
-        const rawData = (row.data || {}) as Partial<FormState>;
+        const rawData = (row.data || row.formState || {}) as Partial<FormState>;
 
-        // Merge with EMPTY_FORM so all fields exist
         const merged: FormState = {
           ...EMPTY_FORM,
           ...rawData,
         };
 
-        // Normalise contactIds → number[]
         const fromRowIds = (row.contactIds ??
           rawData.contactIds ??
           []) as any[];
@@ -64,8 +82,10 @@ export default function EditAppraisalClient({
           .map((v) => Number(v))
           .filter((n) => Number.isFinite(n));
 
+        const primaryKey = Number(row.id ?? appraisalId);
+
         setInitialForm(merged);
-        setPk(Number(row.id ?? appraisalId));
+        setPk(Number.isFinite(primaryKey) ? primaryKey : null);
       } catch (err) {
         console.error("Error loading appraisal", err);
         setError("Unexpected error loading appraisal.");

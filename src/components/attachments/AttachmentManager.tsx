@@ -28,18 +28,34 @@ export function AttachmentManager({ entityType, entityId }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   async function loadAttachments() {
-    setLoading(true);
-    setError(null);
     try {
-      const res = await fetch(
-        `/api/attachments?entityType=${entityType}&entityId=${entityId}`
-      );
+      setLoading(true);
+      setError(null);
+
+      // No entity yet? (new contact/appraisal/property/task) → nothing to load
+      if (!entityId) {
+        setAttachments([]);
+        return;
+      }
+
+      const params = new URLSearchParams({
+        entityType,
+        entityId: String(entityId),
+      });
+
+      const res = await fetch(`/api/attachments?${params.toString()}`);
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load attachments");
+
+      if (!res.ok) {
+        console.error("Failed to load attachments", res.status, json);
+        setError(json.error || "Failed to load attachments");
+        return;
+      }
+
       setAttachments(json.attachments ?? []);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message ?? "Error loading attachments");
+      console.error("Unexpected error loading attachments", err);
+      setError(err.message || "Failed to load attachments");
     } finally {
       setLoading(false);
     }

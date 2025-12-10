@@ -1,7 +1,8 @@
-// src/app/contacts/page.tsx
+// src/app/(app)/contacts/page.tsx
 import React from "react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/requireUser";
+import { ContactsTable } from "./ContactsTable";
 
 type ContactRow = {
   id: number;
@@ -24,8 +25,7 @@ export default async function ContactsPage() {
   const { data, error } = await supabase
     .from("contacts")
     .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    .eq("user_id", user.id);
 
   if (error) {
     console.error("Failed to load contacts:", error);
@@ -53,17 +53,21 @@ export default async function ContactsPage() {
   const rows: ContactRow[] = (data ?? []) as ContactRow[];
 
   const contacts = rows.map((c) => {
-    const displayName =
-      c.preferred_name ||
+    const firstName = c.first_name ?? "";
+    const lastName = c.last_name ?? "";
+
+    const fullName =
       c.full_name ||
+      [firstName, lastName].filter(Boolean).join(" ") ||
+      c.preferred_name ||
       c.name ||
-      [c.first_name, c.last_name].filter(Boolean).join(" ") ||
       "Unnamed contact";
 
     const phone = c.phone_mobile || c.mobile || c.phone || "";
 
-    const created = c.created_at
-      ? new Date(c.created_at).toLocaleDateString("en-AU", {
+    const createdRaw = c.created_at ?? null;
+    const created = createdRaw
+      ? new Date(createdRaw).toLocaleDateString("en-AU", {
           day: "2-digit",
           month: "2-digit",
           year: "numeric",
@@ -71,9 +75,13 @@ export default async function ContactsPage() {
       : "—";
 
     return {
-      ...c,
-      displayName,
+      id: c.id,
+      email: c.email ?? "",
       phone,
+      fullName,
+      firstName,
+      lastName,
+      createdRaw,
       created,
     };
   });
@@ -106,67 +114,9 @@ export default async function ContactsPage() {
         </div>
       </header>
 
-      {/* TABLE */}
+      {/* TABLE + SORT + PAGINATION (client side) */}
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        {contacts.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            No contacts yet. Click &ldquo;New contact&rdquo; to get started.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs uppercase text-slate-500">
-                  <th className="py-2 pr-4">Name</th>
-                  <th className="py-2 px-4">Email</th>
-                  <th className="py-2 px-4">Phone</th>
-                  <th className="py-2 px-4">Created</th>
-                  <th className="py-2 pl-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contacts.map((c) => (
-                  <tr
-                    key={c.id}
-                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
-                  >
-                    <td className="py-2 pr-4 text-slate-900">
-                      <Link
-                        href={`/contacts/${c.id}`}
-                        className="hover:underline"
-                      >
-                        {c.displayName}
-                      </Link>
-                    </td>
-                    <td className="py-2 px-4 text-slate-700">
-                      {c.email || "—"}
-                    </td>
-                    <td className="py-2 px-4 text-slate-700">
-                      {c.phone || "—"}
-                    </td>
-                    <td className="py-2 px-4 text-slate-700">{c.created}</td>
-                    <td className="py-2 pl-4 text-right">
-                      <div className="flex justify-end gap-2 text-xs">
-                        <Link
-                          href={`/contacts/${c.id}`}
-                          className="rounded-full border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-100"
-                        >
-                          View
-                        </Link>
-                        <Link
-                          href={`/appraisals/new?contactId=${c.id}`}
-                          className="rounded-full border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-100"
-                        >
-                          New appraisal
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <ContactsTable contacts={contacts} />
       </section>
     </div>
   );

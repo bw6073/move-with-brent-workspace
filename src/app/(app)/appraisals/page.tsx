@@ -1,162 +1,138 @@
-// src/app/appraisals/page.tsx
+// src/app/(app)/appraisals/page.tsx
 import React from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
+import { AppraisalsTable } from "./AppraisalsTable";
 
 type AppraisalRow = {
   id: number;
-  status: string | null;
-  created_at: string | null;
-  data: any | null;
+  title?: string | null;
+  appraisalTitle?: string | null;
+  street_address?: string | null;
+  streetAddress?: string | null;
+  suburb?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  // JSON form state – newer appraisals likely use this
+  data?: any;
+  formState?: any;
+  [key: string]: any;
 };
 
-export default async function AppraisalsIndexPage() {
-  const supabase = await createClient();
+export default async function AppraisalsPage() {
+  const { user, supabase } = await requireUser();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    console.error("No authenticated user in /appraisals", userError);
-    return <div>Unauthorised.</div>;
-  }
-
-  // 👇 Only select columns we KNOW exist
   const { data, error } = await supabase
     .from("appraisals")
-    .select("id, status, created_at, data")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    .select("*")
+    .eq("user_id", user.id);
 
   if (error) {
-    console.error("Failed to load appraisals", JSON.stringify(error, null, 2));
-    return <div>Failed to load appraisals.</div>;
+    console.error("Failed to load appraisals:", error);
+
+    return (
+      <div className="mx-auto max-w-5xl px-6 py-6">
+        <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900">
+              Appraisals
+            </h1>
+            <p className="text-sm text-slate-500">
+              Property appraisals you have created.
+            </p>
+          </div>
+        </header>
+
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          There was a problem loading appraisals. Please check your Supabase
+          table.
+        </div>
+      </div>
+    );
   }
 
   const rows: AppraisalRow[] = (data ?? []) as AppraisalRow[];
 
-  const formatted = rows.map((row) => {
-    const d = (row.data ?? {}) as any;
+  const appraisals = rows.map((a) => {
+    // Pull any stored form state out of the JSON column
+    const rawData = (a.data || a.formState || {}) as any;
 
+    // TITLE – try JSON first, then flat columns
     const title =
-      d.appraisalTitle ||
-      d.streetAddress ||
-      d.street_address ||
-      `Appraisal #${row.id}`;
+      rawData.appraisalTitle ||
+      rawData.title ||
+      rawData.propertyTitle ||
+      a.appraisalTitle ||
+      a.title ||
+      "Untitled appraisal";
 
-    const address = d.streetAddress || d.street_address || "";
-    const suburb = d.suburb || "";
-    const postcode = d.postcode || "";
-    const state = d.state || "WA";
+    // STREET / ADDRESS – try JSON first, then flat columns
+    const street =
+      rawData.streetAddress ||
+      rawData.propertyStreet ||
+      rawData.propertyAddress ||
+      a.street_address ||
+      a.streetAddress ||
+      "";
+
+    // SUBURB – same idea
+    const suburb =
+      rawData.suburb ||
+      rawData.propertySuburb ||
+      rawData.locality ||
+      a.suburb ||
+      "";
+
+    const address = [street, suburb].filter(Boolean).join(", ");
+
+    const status =
+      rawData.status || rawData.appraisalStatus || a.status || "Draft";
+
+    const createdRaw = a.created_at ?? null;
+    const created = createdRaw
+      ? new Date(createdRaw).toLocaleDateString("en-AU", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        })
+      : "—";
 
     return {
-      id: row.id,
-      status: row.status ?? "DRAFT",
+      id: a.id,
       title,
       address,
       suburb,
-      postcode,
-      state,
-      created_at: row.created_at,
+      status,
+      createdRaw,
+      created,
     };
   });
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="mx-auto max-w-5xl px-6 py-6">
+      {/* HEADER */}
+      <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Appraisals</h1>
           <p className="text-sm text-slate-500">
-            Recent appraisals and drafts.
+            Property appraisals in your CRM.
           </p>
         </div>
-        <Link
-          href="/appraisals/new"
-          className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-        >
-          + New appraisal
-        </Link>
-      </div>
 
-      {formatted.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          No appraisals yet. Create a new one to get started.
-        </p>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50">
-              <tr>
-                <th className="px-3 py-2 text-left">Title</th>
-                <th className="px-3 py-2 text-left">Address</th>
-                <th className="px-3 py-2 text-left">Suburb</th>
-                <th className="px-3 py-2 text-left">Postcode</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left">Created</th>
-                <th className="px-3 py-2 text-left"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {formatted.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b border-slate-100 hover:bg-slate-50/60"
-                >
-                  <td className="px-3 py-2">
-                    <Link
-                      href={`/appraisals/${row.id}/edit`}
-                      className="font-medium text-slate-900 hover:underline"
-                    >
-                      {row.title}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2">{row.address}</td>
-                  <td className="px-3 py-2">{row.suburb}</td>
-                  <td className="px-3 py-2">{row.postcode}</td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${
-                        row.status === "COMPLETED"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-slate-100 text-slate-700"
-                      }`}
-                    >
-                      {row.status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-xs text-slate-500">
-                    {row.created_at
-                      ? new Date(row.created_at).toLocaleDateString("en-AU", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                        })
-                      : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs">
-                    <div className="inline-flex items-center gap-3">
-                      <Link
-                        href={`/appraisals/${row.id}/edit`}
-                        className="text-slate-600 hover:text-slate-900 hover:underline"
-                      >
-                        Edit
-                      </Link>
-                      <Link
-                        href={`/appraisals/${row.id}/summary`}
-                        className="text-slate-500 hover:text-slate-800 hover:underline"
-                      >
-                        Summary
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/appraisals/new"
+            className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+          >
+            + New appraisal
+          </Link>
         </div>
-      )}
+      </header>
+
+      {/* TABLE */}
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <AppraisalsTable appraisals={appraisals} />
+      </section>
     </div>
   );
 }
