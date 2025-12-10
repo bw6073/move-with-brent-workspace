@@ -30,6 +30,10 @@ import {
   type AppraisalJobPayload,
 } from "@/lib/offline/appraisalQueue";
 
+// ✅ NEW: photos + attachments
+import { PhotoManager } from "@/components/photos/PhotoManager";
+import { AttachmentManager } from "@/components/attachments/AttachmentManager";
+
 export type AppraisalFormProps = {
   mode: "create" | "edit";
   appraisalId?: number;
@@ -446,11 +450,10 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
       const saved = await res.json();
       console.log("Saved appraisal:", saved);
 
-      // 🔎 Try to pull the new ID out of the response
+      // Try to pull the new ID out of the response
       let newId: number | null = null;
 
       if (saved) {
-        // Adjust this branch if your API shape is different
         if (saved.appraisal?.id) {
           newId = saved.appraisal.id as number;
         } else if (saved.id) {
@@ -458,7 +461,7 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         }
       }
 
-      // 🧠 If we just CREATED a new appraisal, jump to the edit page for it
+      // If we just CREATED a new appraisal, jump to the edit page for it
       if (mode === "create" && newId) {
         alert(
           markComplete
@@ -686,6 +689,22 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
             <Step9Review form={form} onEditStep={(s) => setStep(s)} />
           )}
         </div>
+
+        {/* ✅ NEW: Photos + attachments section for EDIT mode */}
+        {mode === "edit" && typeof appraisalId === "number" && (
+          <div className="mt-8 space-y-4">
+            <PhotoManager entityType="appraisal" entityId={appraisalId} />
+            <AttachmentManager entityType="appraisal" entityId={appraisalId} />
+          </div>
+        )}
+
+        {mode === "create" && (
+          <div className="mt-4 text-xs text-slate-500">
+            Once you save this appraisal, you’ll be able to add photos and file
+            attachments on the edit screen (perfect for taking photos on your
+            iPad during the walkthrough).
+          </div>
+        )}
 
         {/* Navigation buttons */}
         <div className="mt-6 border-t pt-4">
