@@ -284,9 +284,8 @@ export function PhotoManager({ entityType, entityId }: Props) {
               {uploading ? "Saving…" : "Take / add photos"}
               <input
                 type="file"
-                multiple
                 accept="image/*"
-                capture="environment"
+                multiple
                 className="hidden"
                 onChange={handleUpload}
               />
