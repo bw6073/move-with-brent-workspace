@@ -32,10 +32,8 @@ export default function EditAppraisalClient({
         setLoading(true);
         setError(null);
 
-        const res = await fetch(
-          `/api/appraisals?id=${encodeURIComponent(appraisalId)}`
-        );
-
+        // ✅ Hit the single-record endpoint
+        const res = await fetch(`/api/appraisals/${appraisalId}`);
         const json = await res.json();
 
         if (!res.ok) {
@@ -44,40 +42,24 @@ export default function EditAppraisalClient({
           return;
         }
 
-        let row: any = null;
-
-        if (json.appraisal) {
-          row = json.appraisal;
-        } else if (
-          Array.isArray(json.appraisals) &&
-          json.appraisals.length > 0
-        ) {
-          row = json.appraisals[0];
-        } else if (Array.isArray(json) && json.length > 0) {
-          row = json[0];
-        } else if (json && typeof json === "object") {
-          row = json;
-        }
-
-        console.log("[EditAppraisalClient] Loaded appraisal JSON:", json);
-        console.log("[EditAppraisalClient] Resolved row:", row);
+        const row: any = json.appraisal ?? json;
 
         if (!row) {
           setError("Appraisal not found.");
           return;
         }
 
-        const rawData = (row.data || row.formState || {}) as Partial<FormState>;
+        // ✅ Your full form is stored in row.data
+        const rawData = (row.data ?? {}) as Partial<FormState>;
 
+        // Merge onto EMPTY_FORM so we always have all fields
         const merged: FormState = {
           ...EMPTY_FORM,
           ...rawData,
         };
 
-        const fromRowIds = (row.contactIds ??
-          rawData.contactIds ??
-          []) as any[];
-
+        // Normalise contactIds if present
+        const fromRowIds = (rawData.contactIds ?? []) as any[];
         merged.contactIds = fromRowIds
           .map((v) => Number(v))
           .filter((n) => Number.isFinite(n));

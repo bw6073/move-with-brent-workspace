@@ -3,7 +3,6 @@ import React from "react";
 import EditAppraisalClient from "./EditAppraisalClient";
 
 type PageProps = {
-  // In Next 16, params is a Promise
   params: Promise<{ id: string }>;
 };
 
