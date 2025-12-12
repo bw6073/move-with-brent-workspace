@@ -23,6 +23,7 @@ type ContactNote = {
   id: number;
   contact_id: number;
   note: string;
+  note_type: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -100,6 +101,26 @@ const activityTypeLabel = (t: string) => {
       return "Meeting";
     default:
       return t;
+  }
+};
+
+const noteTypeLabel = (t: string | null) => {
+  if (!t) return "Note";
+
+  switch (t) {
+    case "phone":
+    case "phone_call":
+      return "Phone call";
+    case "meeting":
+      return "Meeting";
+    case "inspection":
+      return "Inspection";
+    case "email":
+      return "Email";
+    case "sms":
+      return "SMS";
+    default:
+      return t.charAt(0).toUpperCase() + t.slice(1);
   }
 };
 
@@ -455,12 +476,17 @@ function ContactTimelineCard({ contactId }: Props) {
               // NOTE
               if (item.kind === "note") {
                 const note = item.note;
+                const typeLabel = noteTypeLabel(note.note_type);
+
                 return (
                   <li key={item.id} className="relative pl-2">
                     <span className="absolute -left-[9px] mt-1.5 h-2.5 w-2.5 rounded-full border border-slate-300 bg-white" />
                     <div className="flex flex-col gap-1 rounded-md bg-amber-50/70 p-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          {typeLabel}
+                        </span>
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-800">
                           Note
                         </span>
                         <span className="ml-auto text-[10px] text-slate-500">

@@ -1,140 +1,101 @@
+// src/app/api/contacts/[id]/notes/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 type RouteContext = {
-  params: Promise<{ id: string }>; // Next 16: params is a Promise
+  params: Promise<{ id: string }>;
 };
 
-// GET → list notes for a contact
 export async function GET(_req: NextRequest, context: RouteContext) {
-  try {
-    const { id } = await context.params;
-    const contactId = Number(id);
+  const supabase = await createClient();
 
-    if (!id || Number.isNaN(contactId)) {
-      return NextResponse.json(
-        { error: "Invalid contact ID", rawId: id ?? null },
-        { status: 400 }
-      );
-    }
+  const { id } = await context.params;
+  const contactId = Number(id);
 
-    const supabase = await createClient();
+  if (Number.isNaN(contactId)) {
+    return NextResponse.json({ error: "Invalid contactId" }, { status: 400 });
+  }
 
-    // Ensure we have an authed user (RLS depends on this)
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-    if (userError || !user) {
-      console.error("GET /contacts/[id]/notes – unauthorised", userError);
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+  }
 
-    const { data, error } = await supabase
-      .from("contact_notes")
-      .select(
-        `
-        id,
-        contact_id,
-        note,
-        created_at,
-        updated_at
-      `
-      )
-      .eq("contact_id", contactId)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("contact_notes")
+    .select("id, contact_id, note, note_type, created_at, updated_at")
+    .eq("contact_id", contactId)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error(
-        "GET /contacts/[id]/notes – Supabase error",
-        JSON.stringify(error, null, 2)
-      );
-      return NextResponse.json(
-        { error: "Failed to load notes", supabaseError: error },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ notes: data ?? [] });
-  } catch (err) {
-    console.error("GET /contacts/[id]/notes – unexpected error", err);
+  if (error) {
+    console.error("Error fetching contact notes", error);
     return NextResponse.json(
-      { error: "Unexpected server error" },
+      { error: "Failed to load notes" },
       { status: 500 }
     );
   }
+
+  return NextResponse.json({ notes: data ?? [] }, { status: 200 });
 }
 
-// POST → create a new note for this contact
 export async function POST(req: NextRequest, context: RouteContext) {
-  try {
-    const { id } = await context.params;
-    const contactId = Number(id);
+  const supabase = await createClient();
 
-    if (!id || Number.isNaN(contactId)) {
-      return NextResponse.json(
-        { error: "Invalid contact ID", rawId: id ?? null },
-        { status: 400 }
-      );
-    }
+  const { id } = await context.params;
+  const contactId = Number(id);
 
-    const supabase = await createClient();
+  if (Number.isNaN(contactId)) {
+    return NextResponse.json({ error: "Invalid contactId" }, { status: 400 });
+  }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+  const body = (await req.json().catch(() => null)) as {
+    note?: string;
+    note_type?: string;
+  } | null;
 
-    if (userError || !user) {
-      console.error("POST /contacts/[id]/notes – unauthorised", userError);
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+  const note = (body?.note ?? "").trim();
+  const note_type = (body?.note_type ?? "general").trim() || "general";
 
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body.note !== "string" || !body.note.trim()) {
-      return NextResponse.json(
-        { error: "Note text is required" },
-        { status: 400 }
-      );
-    }
-
-    const { data, error } = await supabase
-      .from("contact_notes")
-      .insert({
-        user_id: user.id,
-        contact_id: contactId,
-        note: body.note.trim(),
-      })
-      .select(
-        `
-        id,
-        contact_id,
-        note,
-        created_at,
-        updated_at
-      `
-      )
-      .single();
-
-    if (error || !data) {
-      console.error(
-        "POST /contacts/[id]/notes – Supabase error",
-        JSON.stringify(error, null, 2)
-      );
-      return NextResponse.json(
-        { error: "Failed to create note", supabaseError: error },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ note: data });
-  } catch (err) {
-    console.error("POST /contacts/[id]/notes – unexpected error", err);
+  if (!note) {
     return NextResponse.json(
-      { error: "Unexpected server error" },
+      { error: "Note text is required" },
+      { status: 400 }
+    );
+  }
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    console.error("Auth error in notes POST", authError);
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+  }
+
+  const { data, error } = await supabase
+    .from("contact_notes")
+    .insert({
+      user_id: user.id,
+      contact_id: contactId,
+      note,
+      note_type,
+    })
+    .select("id, contact_id, note, note_type, created_at, updated_at")
+    .single();
+
+  if (error) {
+    console.error("Error creating contact note", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to create note" },
       { status: 500 }
     );
   }
+
+  return NextResponse.json({ note: data }, { status: 201 });
 }

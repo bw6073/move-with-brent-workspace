@@ -1,4 +1,4 @@
-// src/app/contacts/[id]/page.tsx
+// src/app/(app)/contacts/[id]/page.tsx
 import React from "react";
 import { createClient } from "@/lib/supabase/server";
 import ContactDetailClient from "@/components/contacts/ContactDetailClient";
