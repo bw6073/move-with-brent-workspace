@@ -11,6 +11,7 @@ import { ContactActivityCard } from "./ContactActivityCard";
 import { ContactTasksCard } from "./ContactTasksCard";
 import { ContactLinkedContactsCard } from "./ContactLinkedContactsCard";
 import { ContactTimelineCard } from "./ContactTimelineCard";
+import { CreateDealButton } from "@/components/pipeline/CreateDealButton";
 
 type Props = {
   initialContact: Contact;
@@ -96,6 +97,11 @@ export default function ContactDetailClient({ initialContact }: Props) {
                 <h2 className="text-sm font-semibold text-slate-900">
                   Contact details
                 </h2>
+                <CreateDealButton
+                  contactId={contact.id}
+                  defaultTitle={displayName}
+                  defaultStage="lead"
+                />
                 <button
                   type="button"
                   onClick={() => setEditing(true)}

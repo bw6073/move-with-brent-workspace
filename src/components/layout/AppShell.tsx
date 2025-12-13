@@ -43,6 +43,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
     { href: "/contacts", label: "Contacts" },
     { href: "/properties", label: "Properties" },
     { href: "/appraisals", label: "Appraisals" },
+    { href: "/pipeline", label: "Pipeline" },
     { href: "/tasks", label: "Tasks" },
     { href: "/open-homes", label: "Open Homes" },
   ];

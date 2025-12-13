@@ -3,71 +3,135 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 type RouteContext = {
-  params: Promise<{ id: string }>; // ✅ Next 16: params is a Promise
+  params: Promise<{ id: string }>;
 };
 
-// ---------- GET /api/appraisals/[id] ----------
+async function requireUser(supabase: any) {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    return {
+      user: null,
+      response: NextResponse.json({ error: "Not signed in" }, { status: 401 }),
+    };
+  }
+
+  return { user, response: null };
+}
+
+function parseId(id: string) {
+  const n = Number(id);
+  return Number.isFinite(n) ? n : null;
+}
+
+function norm(s: unknown) {
+  return String(s ?? "").trim();
+}
+
+async function ensurePropertyIdFromAddress(
+  supabase: any,
+  userId: string,
+  input: {
+    streetAddress?: unknown;
+    suburb?: unknown;
+    postcode?: unknown;
+    state?: unknown;
+    propertyType?: unknown;
+  }
+): Promise<number | null> {
+  const street_address = norm(input.streetAddress);
+  const suburb = norm(input.suburb);
+  const postcode = norm(input.postcode);
+  const state = norm(input.state) || "WA";
+
+  if (!street_address || !suburb) return null;
+
+  const { data: existing, error: findError } = await supabase
+    .from("properties")
+    .select("id")
+    .eq("user_id", userId)
+    .ilike("street_address", street_address)
+    .ilike("suburb", suburb)
+    .eq("state", state)
+    .eq("postcode", postcode || null)
+    .maybeSingle();
+
+  if (findError)
+    console.error("[ensurePropertyIdFromAddress] findError", findError);
+  if (existing?.id) return Number(existing.id);
+
+  const insertPayload: Record<string, unknown> = {
+    user_id: userId,
+    street_address,
+    suburb,
+    state,
+    postcode: postcode || null,
+    market_status: "appraisal",
+  };
+
+  if (norm(input.propertyType))
+    insertPayload.property_type = norm(input.propertyType);
+
+  const { data: created, error: createError } = await supabase
+    .from("properties")
+    .insert(insertPayload)
+    .select("id")
+    .single();
+
+  if (createError) {
+    console.error("[ensurePropertyIdFromAddress] createError", createError);
+    return null;
+  }
+
+  return created?.id ? Number(created.id) : null;
+}
+
+// ---------- GET ----------
 export async function GET(_req: Request, context: RouteContext) {
   const { id } = await context.params;
-  const rawId = id;
-  console.log("[API /api/appraisals/[id] GET] rawId:", rawId);
+  const appraisalId = parseId(id);
 
-  const numericId = Number(rawId);
-
-  if (!rawId || Number.isNaN(numericId)) {
+  if (!appraisalId) {
     return NextResponse.json(
-      {
-        error: "Invalid appraisal ID",
-        rawId: rawId ?? null,
-      },
+      { error: "Invalid appraisal ID" },
       { status: 400 }
     );
   }
 
-  try {
-    const supabase = await createClient();
+  const supabase = await createClient();
+  const { user, response } = await requireUser(supabase);
+  if (response) return response;
 
-    const { data, error } = await supabase
-      .from("appraisals")
-      .select("*")
-      .eq("id", numericId)
-      .maybeSingle();
+  const { data, error } = await supabase
+    .from("appraisals")
+    .select("*")
+    .eq("id", appraisalId)
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-    if (error) {
-      console.error("[API /api/appraisals/[id] GET] Supabase error:", error);
-      return NextResponse.json(
-        { error: "Failed to load appraisal", supabaseError: error },
-        { status: 500 }
-      );
-    }
-
-    if (!data) {
-      return NextResponse.json(
-        { error: "Appraisal not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ appraisal: data }, { status: 200 });
-  } catch (err) {
-    console.error("[API /api/appraisals/[id] GET] Unexpected error:", err);
-    return NextResponse.json(
-      { error: "Unexpected server error" },
-      { status: 500 }
-    );
+  if (error) {
+    console.error("[GET /api/appraisals/[id]]", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  if (!data) {
+    return NextResponse.json({ error: "Appraisal not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ appraisal: data }, { status: 200 });
 }
 
-// ---------- PUT /api/appraisals/[id] ----------
+// ---------- PUT ----------
 export async function PUT(req: Request, context: RouteContext) {
   const { id } = await context.params;
-  const rawId = id;
-  console.log("[API /api/appraisals/[id] PUT] rawId:", rawId);
+  const appraisalId = parseId(id);
 
-  const numericId = Number(rawId);
-  if (!rawId || Number.isNaN(numericId)) {
+  if (!appraisalId) {
     return NextResponse.json(
-      { error: "Invalid appraisal ID", rawId: rawId ?? null },
+      { error: "Invalid appraisal ID" },
       { status: 400 }
     );
   }
@@ -79,172 +143,157 @@ export async function PUT(req: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const supabase = await createClient();
+  const { user, response } = await requireUser(supabase);
+  if (response) return response;
+
   const {
     data: formData,
     status,
     contactIds,
     property_id,
     propertyId,
-  }: {
-    data?: any;
-    status?: string;
-    contactIds?: unknown;
-    property_id?: number | null;
-    propertyId?: number | null;
-  } = body;
+  } = body ?? {};
 
-  try {
-    const supabase = await createClient();
+  // Decide property id:
+  // - if explicitly provided: validate it belongs to this user
+  // - else: auto link/create from address inside the form data
+  let effectivePropertyId: number | null =
+    typeof property_id === "number"
+      ? property_id
+      : typeof propertyId === "number"
+      ? propertyId
+      : typeof formData?.propertyId === "number"
+      ? formData.propertyId
+      : null;
 
-    // Work out which property we should point to
-    // 1) explicit property_id
-    // 2) propertyId (camel)
-    // 3) propertyId inside formData
-    const effectivePropertyId: number | null =
-      typeof property_id === "number"
-        ? property_id
-        : typeof propertyId === "number"
-        ? propertyId
-        : typeof formData?.propertyId === "number"
-        ? formData.propertyId
-        : null;
-
-    // Merge JSON data so we always keep a propertyId copy inside the blob
-    const mergedData = {
-      ...(formData ?? {}),
-      propertyId: effectivePropertyId ?? formData?.propertyId ?? null,
-    };
-
-    // 1) Update main appraisal record
-    const { data, error } = await supabase
-      .from("appraisals")
-      .update({
-        data: mergedData,
-        status: status ?? "DRAFT",
-        property_id: effectivePropertyId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", numericId)
-      .select("*")
+  if (effectivePropertyId) {
+    const { data: p, error: pErr } = await supabase
+      .from("properties")
+      .select("id")
+      .eq("id", effectivePropertyId)
+      .eq("user_id", user.id)
       .maybeSingle();
 
-    if (error) {
-      console.error("[API /api/appraisals/[id] PUT] Supabase error:", error);
+    if (pErr || !p) {
       return NextResponse.json(
-        { error: "Failed to update appraisal", supabaseError: error },
-        { status: 500 }
+        { error: "Invalid property_id for this user" },
+        { status: 400 }
       );
     }
-
-    if (!data) {
-      return NextResponse.json(
-        { error: "Appraisal not found after update" },
-        { status: 404 }
-      );
-    }
-
-    // 2) Sync join table for linked contacts (if provided)
-    if (Array.isArray(contactIds)) {
-      const numericContactIds = contactIds
-        .map((v) => Number(v))
-        .filter((n) => Number.isFinite(n));
-
-      // Clear existing links
-      const { error: deleteError } = await supabase
-        .from("appraisal_contacts")
-        .delete()
-        .eq("appraisal_id", numericId);
-
-      if (deleteError) {
-        console.error(
-          "[API /api/appraisals/[id] PUT] Failed to clear appraisal_contacts",
-          deleteError
-        );
-        // Not fatal for the main save
-      }
-
-      if (numericContactIds.length > 0) {
-        const rows = numericContactIds.map((cid, index) => ({
-          appraisal_id: numericId,
-          contact_id: cid,
-          role: "owner",
-          is_primary: index === 0,
-        }));
-
-        const { error: insertError } = await supabase
-          .from("appraisal_contacts")
-          .insert(rows);
-
-        if (insertError) {
-          console.error(
-            "[API /api/appraisals/[id] PUT] Failed to insert appraisal_contacts",
-            insertError
-          );
-          // Still return 200 for main appraisal update
-        }
-      }
-    }
-
-    return NextResponse.json({ appraisal: data }, { status: 200 });
-  } catch (err) {
-    console.error("[API /api/appraisals/[id] PUT] Unexpected error:", err);
-    return NextResponse.json(
-      { error: "Unexpected server error" },
-      { status: 500 }
-    );
+  } else {
+    effectivePropertyId = await ensurePropertyIdFromAddress(supabase, user.id, {
+      streetAddress: formData?.streetAddress,
+      suburb: formData?.suburb,
+      postcode: formData?.postcode,
+      state: formData?.state,
+      propertyType: formData?.propertyType,
+    });
   }
+
+  const mergedData = {
+    ...(formData ?? {}),
+    propertyId: effectivePropertyId ?? null,
+  };
+
+  const { data, error } = await supabase
+    .from("appraisals")
+    .update({
+      data: mergedData,
+      status: status ?? "DRAFT",
+      property_id: effectivePropertyId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", appraisalId)
+    .eq("user_id", user.id)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[PUT /api/appraisals/[id]]", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (!data) {
+    return NextResponse.json({ error: "Appraisal not found" }, { status: 404 });
+  }
+
+  // Sync join table for linked contacts (if provided)
+  if (Array.isArray(contactIds)) {
+    const numericContactIds = contactIds
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n));
+
+    // clear
+    const { error: deleteError } = await supabase
+      .from("appraisal_contacts")
+      .delete()
+      .eq("appraisal_id", appraisalId);
+
+    if (deleteError) {
+      console.error("[PUT appraisal_contacts delete]", deleteError);
+      // not fatal
+    }
+
+    if (numericContactIds.length > 0) {
+      const rows = numericContactIds.map((cid, index) => ({
+        appraisal_id: appraisalId,
+        contact_id: cid,
+        role: "owner",
+        is_primary: index === 0,
+      }));
+
+      const { error: insertError } = await supabase
+        .from("appraisal_contacts")
+        .insert(rows);
+
+      if (insertError) {
+        console.error("[PUT appraisal_contacts insert]", insertError);
+        // not fatal
+      }
+    }
+  }
+
+  return NextResponse.json({ appraisal: data }, { status: 200 });
 }
 
-// ---------- DELETE /api/appraisals/[id] ----------
+// ---------- DELETE ----------
 export async function DELETE(_req: Request, context: RouteContext) {
   const { id } = await context.params;
-  const rawId = id;
-  console.log("[API /api/appraisals/[id] DELETE] rawId:", rawId);
+  const appraisalId = parseId(id);
 
-  const numericId = Number(rawId);
-  if (!rawId || Number.isNaN(numericId)) {
+  if (!appraisalId) {
     return NextResponse.json(
-      { error: "Invalid appraisal ID", rawId: rawId ?? null },
+      { error: "Invalid appraisal ID" },
       { status: 400 }
     );
   }
 
-  try {
-    const supabase = await createClient();
+  const supabase = await createClient();
+  const { user, response } = await requireUser(supabase);
+  if (response) return response;
 
-    // Clear join table links first
-    const { error: deleteLinksError } = await supabase
-      .from("appraisal_contacts")
-      .delete()
-      .eq("appraisal_id", numericId);
+  // Clear join links first
+  const { error: deleteLinksError } = await supabase
+    .from("appraisal_contacts")
+    .delete()
+    .eq("appraisal_id", appraisalId);
 
-    if (deleteLinksError) {
-      console.error(
-        "[API /api/appraisals/[id] DELETE] Failed to delete links",
-        deleteLinksError
-      );
-      // Not fatal, but logged
-    }
-
-    const { error } = await supabase
-      .from("appraisals")
-      .delete()
-      .eq("id", numericId);
-
-    if (error) {
-      console.error("[API /api/appraisals/[id] DELETE] Supabase error:", error);
-      return NextResponse.json(
-        { error: "Failed to delete appraisal", supabaseError: error },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 });
-  } catch (err) {
-    console.error("[API /api/appraisals/[id] DELETE] Unexpected error:", err);
-    return NextResponse.json(
-      { error: "Unexpected server error" },
-      { status: 500 }
-    );
+  if (deleteLinksError) {
+    console.error("[DELETE appraisal_contacts]", deleteLinksError);
+    // not fatal
   }
+
+  const { error } = await supabase
+    .from("appraisals")
+    .delete()
+    .eq("id", appraisalId)
+    .eq("user_id", user.id);
+
+  if (error) {
+    console.error("[DELETE /api/appraisals/[id]]", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true }, { status: 200 });
 }

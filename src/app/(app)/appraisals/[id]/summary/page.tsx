@@ -1,4 +1,4 @@
-// src/app/appraisals/[id]/summary/page.tsx
+// src/app/(app)/appraisals/[id]/summary/page.tsx
 import React from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";

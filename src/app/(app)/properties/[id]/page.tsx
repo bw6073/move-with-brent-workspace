@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PropertySideTabs } from "@/components/properties/PropertySideTabs";
 import { PropertyOpenHomesPanel } from "./PropertyOpenHomesPanel";
+import { PropertyDealsPanel } from "@/components/properties/PropertyDealsPanel";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -334,6 +335,7 @@ export default async function PropertyDetailPage({ params }: PageProps) {
             </dl>
           </div>
 
+          <PropertyDealsPanel propertyId={numericId} />
           <PropertySideTabs propertyId={numericId} />
         </section>
       </div>

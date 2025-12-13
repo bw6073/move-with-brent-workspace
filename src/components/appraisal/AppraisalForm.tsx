@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { CreateDealButton } from "@/components/pipeline/CreateDealButton";
 
 import {
   Step,
@@ -539,12 +540,22 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
           </div>
 
           {mode === "edit" && typeof appraisalId === "number" && (
-            <Link
-              href={`/appraisals/${appraisalId}/summary`}
-              className="inline-flex items-center justify-center rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
-            >
-              View summary
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/appraisals/${appraisalId}/summary`}
+                className="inline-flex items-center justify-center rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              >
+                View summary
+              </Link>
+
+              <CreateDealButton
+                appraisalId={appraisalId}
+                propertyId={propertyId ?? undefined}
+                defaultTitle={headerTitle || `Appraisal #${appraisalId}`}
+                defaultStage="appraisal"
+                size="sm"
+              />
+            </div>
           )}
         </div>
 

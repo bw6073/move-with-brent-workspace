@@ -3,10 +3,8 @@
 
 import React, { useEffect, useState } from "react";
 import AppraisalForm from "@/components/appraisal/AppraisalForm";
-import {
-  EMPTY_FORM,
-  type FormState,
-} from "@/components/appraisal/config/types";
+import type { FormState } from "@/components/appraisal/config/types";
+import { EMPTY_FORM } from "@/components/appraisal/config/types";
 
 type EditAppraisalClientProps = {
   appraisalId: string; // from the URL segment
@@ -32,7 +30,6 @@ export default function EditAppraisalClient({
         setLoading(true);
         setError(null);
 
-        // ✅ Hit the single-record endpoint
         const res = await fetch(`/api/appraisals/${appraisalId}`);
         const json = await res.json();
 
@@ -49,16 +46,13 @@ export default function EditAppraisalClient({
           return;
         }
 
-        // ✅ Your full form is stored in row.data
         const rawData = (row.data ?? {}) as Partial<FormState>;
 
-        // Merge onto EMPTY_FORM so we always have all fields
         const merged: FormState = {
           ...EMPTY_FORM,
           ...rawData,
         };
 
-        // Normalise contactIds if present
         const fromRowIds = (rawData.contactIds ?? []) as any[];
         merged.contactIds = fromRowIds
           .map((v) => Number(v))
