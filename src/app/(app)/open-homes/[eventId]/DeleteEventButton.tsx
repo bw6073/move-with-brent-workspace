@@ -1,4 +1,4 @@
-// app/open-homes/[eventId]/DeleteEventButton.tsx
+// app/(app)/open-homes/[eventId]/DeleteEventButton.tsx
 "use client";
 
 import { useRouter } from "next/navigation";
