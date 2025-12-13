@@ -57,7 +57,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
 
   // 🧱 NORMAL CRM SHELL
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-slate-50 overflow-x-hidden">
       {/* SIDEBAR */}
       <aside
         className={`flex flex-col border-r border-slate-200 bg-white transition-all duration-200 ${
@@ -127,7 +127,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
       </aside>
 
       {/* MAIN AREA */}
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-screen flex-1 min-w-0 flex-col">
         {/* Header */}
         <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-4">
