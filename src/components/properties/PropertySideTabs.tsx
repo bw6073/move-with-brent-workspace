@@ -6,6 +6,7 @@ import { PropertyAppraisalsPanel } from "./PropertyAppraisalsPanel";
 import { PropertyContactsPanel } from "./PropertyContactsPanel";
 import { PropertyTasksPanel } from "./PropertyTasksPanel";
 import { PropertyTimelinePanel } from "./PropertyTimelinePanel";
+import { PropertyFilesPanel } from "./PropertyFilesPanel";
 
 type Props = {
   propertyId: number;
@@ -19,7 +20,6 @@ export function PropertySideTabs({ propertyId }: Props) {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm text-sm">
-      {/* Tab buttons */}
       <div className="mb-3 flex flex-wrap gap-1">
         {TABS.map((tab) => {
           const selected = tab === activeTab;
@@ -45,24 +45,18 @@ export function PropertySideTabs({ propertyId }: Props) {
         {activeTab === "Timeline" && (
           <PropertyTimelinePanel propertyId={propertyId} />
         )}
-
         {activeTab === "Appraisals" && (
           <PropertyAppraisalsPanel propertyId={propertyId} />
         )}
-
         {activeTab === "Contacts" && (
           <PropertyContactsPanel propertyId={propertyId} />
         )}
-
         {activeTab === "Tasks" && (
           <PropertyTasksPanel propertyId={propertyId} />
         )}
 
         {activeTab === "Files" && (
-          <p className="text-xs text-slate-500">
-            Later we can surface photo folders, floorplans, strata docs, and
-            other files for this property in this tab.
-          </p>
+          <PropertyFilesPanel propertyId={propertyId} />
         )}
       </div>
     </div>

@@ -23,23 +23,23 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
 
-  const { data: photo, error: loadErr } = await supabase
-    .from("photos")
+  const { data: attachment, error: loadErr } = await supabase
+    .from("attachments")
     .select("id, user_id, bucket, storage_path")
     .eq("id", id)
     .single();
 
-  if (loadErr || !photo) {
+  if (loadErr || !attachment) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (photo.user_id !== user.id) {
+  if (attachment.user_id !== user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { error: storageErr } = await supabase.storage
-    .from(photo.bucket)
-    .remove([photo.storage_path]);
+    .from(attachment.bucket)
+    .remove([attachment.storage_path]);
 
   if (storageErr) {
     console.error(storageErr);
@@ -50,7 +50,7 @@ export async function DELETE(
   }
 
   const { error: deleteErr } = await supabase
-    .from("photos")
+    .from("attachments")
     .delete()
     .eq("id", id)
     .eq("user_id", user.id);
@@ -58,7 +58,7 @@ export async function DELETE(
   if (deleteErr) {
     console.error(deleteErr);
     return NextResponse.json(
-      { error: "Failed to delete photo" },
+      { error: "Failed to delete attachment" },
       { status: 500 }
     );
   }
