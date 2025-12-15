@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { GlobalSearchBox } from "@/components/search/GlobalSearchBox";
 import { Footer } from "./Footer";
+import { createClient } from "@/lib/supabase/client";
 
 type Props = {
   children: React.ReactNode;
@@ -14,8 +15,11 @@ type Props = {
 const SIDEBAR_KEY = "mwbrent-sidebar-collapsed";
 
 export const AppShell: React.FC<Props> = ({ children }) => {
-  const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const supabase = useMemo(() => createClient(), []);
+
+  const [collapsed, setCollapsed] = useState(false);
+  const [displayName, setDisplayName] = useState<string>("");
 
   // 🔒 DETECT KIOSK ROUTES (standalone mode)
   const isKiosk =
@@ -48,6 +52,50 @@ export const AppShell: React.FC<Props> = ({ children }) => {
     { href: "/open-homes", label: "Open Homes" },
   ];
 
+  const loadUserLabel = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const name =
+      (user?.user_metadata?.display_name as string | undefined) ||
+      (user?.user_metadata?.phone as string | undefined) || // fallback if you ever want it
+      user?.email ||
+      "";
+
+    setDisplayName(name);
+  }, [supabase]);
+
+  // ✅ Load user label + keep it fresh
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      await loadUserLabel();
+    };
+
+    // initial
+    load();
+
+    // update on auth changes (sign in/out, token refresh etc.)
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      if (!cancelled) load();
+    });
+
+    // also refresh when tab regains focus (covers metadata updates where JWT doesn’t refresh)
+    const onFocus = () => {
+      if (!cancelled) load();
+    };
+
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      sub?.subscription?.unsubscribe();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [supabase, loadUserLabel]);
+
   // 🧾 KIOSK MODE: no CRM chrome, just the kiosk UI
   if (isKiosk) {
     return (
@@ -55,7 +103,6 @@ export const AppShell: React.FC<Props> = ({ children }) => {
     );
   }
 
-  // 🧱 NORMAL CRM SHELL
   return (
     <div className="flex min-h-screen bg-slate-50 overflow-x-hidden">
       {/* SIDEBAR */}
@@ -121,7 +168,8 @@ export const AppShell: React.FC<Props> = ({ children }) => {
 
         {!collapsed && (
           <div className="border-t border-slate-200 p-3 text-[11px] text-slate-500">
-            Signed in as <span className="font-medium">Brent</span>
+            Signed in as{" "}
+            <span className="font-medium">{displayName || "…"}</span>
           </div>
         )}
       </aside>
@@ -138,7 +186,17 @@ export const AppShell: React.FC<Props> = ({ children }) => {
             </div>
           </div>
 
-          <LogoutButton />
+          <div className="flex items-center gap-2">
+            <Link
+              href="/settings"
+              title="Account settings"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100"
+            >
+              ⚙️
+            </Link>
+
+            <LogoutButton />
+          </div>
         </header>
 
         {/* MAIN CONTENT */}
