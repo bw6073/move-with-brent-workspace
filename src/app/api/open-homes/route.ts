@@ -1,8 +1,18 @@
+// app/api/open-homes/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+  }
 
   const body = await req.json();
   const { propertyId, title, startAt, endAt, notes } = body;
@@ -22,13 +32,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Convert datetime-local to ISO
   const startDate = new Date(startAt);
   const endDate = endAt ? new Date(endAt) : null;
 
   const { data, error } = await supabase
     .from("open_home_events")
     .insert({
+      user_id: user.id,
       property_id: propertyIdNum,
       title: title?.trim() || null,
       start_at: startDate.toISOString(),
@@ -40,10 +50,7 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     console.error("Error inserting open_home_event", error);
-    return NextResponse.json(
-      { error: "Insert failed", supabaseError: error },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Insert failed" }, { status: 500 });
   }
 
   return NextResponse.json({ event: data }, { status: 201 });
