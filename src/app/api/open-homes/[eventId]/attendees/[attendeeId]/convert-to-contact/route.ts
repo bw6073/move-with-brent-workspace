@@ -11,6 +11,7 @@ type RouteContext = {
 
 type AttendeeRow = {
   id: string;
+  user_id: string;
   event_id: string;
   property_id: number | null;
   first_name: string | null;
@@ -40,6 +41,30 @@ function normalisePhone(input: string | null | undefined): string | null {
   return digits.length ? digits : null;
 }
 
+async function ensureOwnedEvent(
+  supabase: any,
+  eventId: string,
+  userId: string
+): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const { data, error } = await supabase
+    .from("open_home_events")
+    .select("id")
+    .eq("id", eventId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("convert-to-contact: error checking event ownership", error);
+    return { ok: false, status: 500, error: "Failed to verify open home" };
+  }
+
+  if (!data) {
+    return { ok: false, status: 404, error: "Open home not found" };
+  }
+
+  return { ok: true };
+}
+
 export async function POST(_req: NextRequest, context: RouteContext) {
   try {
     const { eventId, attendeeId } = await context.params;
@@ -52,19 +77,25 @@ export async function POST(_req: NextRequest, context: RouteContext) {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
-      console.error(
-        "No authenticated user in convert-to-contact endpoint",
-        userError
-      );
       return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
     }
 
-    // ───────────────── 1) LOAD ATTENDEE ─────────────────
-    const { data: attendeeData, error: attendeeError } = await supabase
+    // ✅ Ensure the event is owned by this user (defence in depth)
+    const owned = await ensureOwnedEvent(supabase, eventId, user.id);
+    if (!owned.ok) {
+      return NextResponse.json(
+        { error: owned.error },
+        { status: owned.status }
+      );
+    }
+
+    // ───────────────── 1) LOAD ATTENDEE (scoped) ─────────────────
+    const { data: attendee, error: attendeeError } = await supabase
       .from("open_home_attendees")
       .select(
         `
         id,
+        user_id,
         event_id,
         property_id,
         first_name,
@@ -83,22 +114,27 @@ export async function POST(_req: NextRequest, context: RouteContext) {
       )
       .eq("id", attendeeId)
       .eq("event_id", eventId)
-      .maybeSingle();
+      .eq("user_id", user.id)
+      .maybeSingle<AttendeeRow>();
 
-    const attendee = attendeeData as AttendeeRow | null;
-
-    if (attendeeError || !attendee) {
+    if (attendeeError) {
       console.error(
         "convert-to-contact: failed to load attendee",
         attendeeError
       );
+      return NextResponse.json(
+        { error: "Failed to load attendee" },
+        { status: 500 }
+      );
+    }
+
+    if (!attendee) {
       return NextResponse.json(
         { error: "Attendee not found" },
         { status: 404 }
       );
     }
 
-    // Already linked? Just return the existing contact id.
     if (attendee.contact_id) {
       return NextResponse.json({
         contactId: attendee.contact_id,
@@ -112,7 +148,7 @@ export async function POST(_req: NextRequest, context: RouteContext) {
         ? attendee.email.trim().toLowerCase()
         : null;
 
-    // ───────────────── 2) TRY TO FIND EXISTING CONTACT ─────────────────
+    // ───────────────── 2) FIND EXISTING CONTACT (same user) ─────────────────
     let existingContactId: number | null = null;
 
     if (normalisedPhone || email) {
@@ -135,24 +171,23 @@ export async function POST(_req: NextRequest, context: RouteContext) {
             email && c.email && c.email.toLowerCase() === email;
           const phoneMatch =
             normalisedPhone && cPhoneDigits && cPhoneDigits === normalisedPhone;
-
           return Boolean(emailMatch || phoneMatch);
         });
 
-        if (match) {
-          existingContactId = match.id;
-        }
+        if (match) existingContactId = match.id;
       }
     }
 
+    // ───────────────── 3) CREATE OR LINK ─────────────────
     let finalContactId: number;
 
     if (existingContactId) {
-      // ── 3a) LINK TO EXISTING CONTACT ──
       const { error: linkError } = await supabase
         .from("open_home_attendees")
         .update({ contact_id: existingContactId })
-        .eq("id", attendee.id);
+        .eq("id", attendee.id)
+        .eq("event_id", eventId)
+        .eq("user_id", user.id);
 
       if (linkError) {
         console.error(
@@ -160,17 +195,13 @@ export async function POST(_req: NextRequest, context: RouteContext) {
           linkError
         );
         return NextResponse.json(
-          {
-            error: "Failed to link attendee to existing contact",
-            supabaseError: linkError,
-          },
+          { error: "Failed to link attendee to existing contact" },
           { status: 500 }
         );
       }
 
       finalContactId = existingContactId;
     } else {
-      // ── 3b) CREATE NEW CONTACT ──
       const fullName = [attendee.first_name?.trim(), attendee.last_name?.trim()]
         .filter(Boolean)
         .join(" ")
@@ -188,18 +219,12 @@ export async function POST(_req: NextRequest, context: RouteContext) {
         .from("contacts")
         .insert({
           user_id: user.id,
-
-          // main name + breakdown
           name: displayName,
           first_name: attendee.first_name || null,
           last_name: attendee.last_name || null,
-
           email: attendee.email || null,
-
-          // store in both so list + form can see it
           phone_mobile: phoneToStore,
           phone: phoneToStore,
-
           contact_type: attendee.is_seller
             ? "seller"
             : attendee.is_buyer
@@ -207,7 +232,6 @@ export async function POST(_req: NextRequest, context: RouteContext) {
             : null,
           lead_source: attendee.lead_source || null,
           notes: attendee.notes || null,
-
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -220,21 +244,19 @@ export async function POST(_req: NextRequest, context: RouteContext) {
           insertError
         );
         return NextResponse.json(
-          {
-            error: "Failed to create contact",
-            details: insertError,
-          },
+          { error: "Failed to create contact" },
           { status: 500 }
         );
       }
 
       finalContactId = (newContact as { id: number }).id;
 
-      // Link attendee → new contact
       const { error: linkError } = await supabase
         .from("open_home_attendees")
         .update({ contact_id: finalContactId })
-        .eq("id", attendee.id);
+        .eq("id", attendee.id)
+        .eq("event_id", eventId)
+        .eq("user_id", user.id);
 
       if (linkError) {
         console.error(
@@ -242,20 +264,13 @@ export async function POST(_req: NextRequest, context: RouteContext) {
           linkError
         );
         return NextResponse.json(
-          {
-            error: "Contact created but failed to link attendee",
-            supabaseError: linkError,
-          },
+          { error: "Contact created but failed to link attendee" },
           { status: 500 }
         );
       }
     }
 
-    // ───────────────── DONE ─────────────────
-    return NextResponse.json({
-      contactId: finalContactId,
-      success: true,
-    });
+    return NextResponse.json({ contactId: finalContactId, success: true });
   } catch (err) {
     console.error(
       "Unexpected error in POST /open-homes/[eventId]/attendees/[attendeeId]/convert-to-contact",

@@ -12,6 +12,7 @@ type OpenHomeEvent = {
   start_at: string;
   end_at: string | null;
   notes: string | null;
+  user_id: string;
 };
 
 type Property = {
@@ -20,6 +21,7 @@ type Property = {
   suburb: string;
   state: string;
   postcode: string;
+  user_id: string;
 };
 
 type RouteProps = {
@@ -36,15 +38,35 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
   const { eventId } = await props.params;
   const supabase = await createClient();
 
-  // 1) Load the event (use maybeSingle so "no row" is not treated as an error)
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-3 px-6 py-6">
+        <h1 className="mb-2 text-2xl font-semibold">Open home</h1>
+        <p className="text-red-600">You must be logged in to view this page.</p>
+        <Link
+          href="/open-homes"
+          className="mt-2 inline-flex text-sm text-blue-600 hover:underline"
+        >
+          ← Back to open homes
+        </Link>
+      </div>
+    );
+  }
+
+  // 1) Load the event (scoped to the current user)
   const { data: event, error: eventError } = await supabase
     .from("open_home_events")
-    .select("id, property_id, title, start_at, end_at, notes")
+    .select("id, user_id, property_id, title, start_at, end_at, notes")
     .eq("id", eventId)
+    .eq("user_id", user.id)
     .maybeSingle<OpenHomeEvent>();
 
   if (!event) {
-    // Only log *real* errors, not the "no row" case
     if (eventError) {
       console.error("Error loading open_home_event", eventError);
     }
@@ -53,8 +75,8 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
       <div className="mx-auto max-w-5xl space-y-3 px-6 py-6">
         <h1 className="mb-2 text-2xl font-semibold">Open home</h1>
         <p className="text-red-600">
-          This open home could not be found. It may have been deleted or the
-          link is no longer valid.
+          This open home could not be found. It may have been deleted, or you
+          don’t have access to it.
         </p>
         <Link
           href="/open-homes"
@@ -66,19 +88,24 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
     );
   }
 
-  // 2) Load the property for the label
-  const { data: property } = await supabase
+  // 2) Load the property for the label (also scoped)
+  const { data: property, error: propertyError } = await supabase
     .from("properties")
-    .select("id, street_address, suburb, state, postcode")
+    .select("id, user_id, street_address, suburb, state, postcode")
     .eq("id", event.property_id)
+    .eq("user_id", user.id)
     .maybeSingle<Property>();
+
+  if (propertyError) {
+    console.error("Error loading property for open home", propertyError);
+  }
 
   const propertyLabel = property
     ? `${property.street_address}, ${property.suburb} ${property.state} ${property.postcode}`
     : `Property #${event.property_id}`;
 
-  // 3) Load attendees
-  const { data: attendeesData = [] } = await supabase
+  // 3) Load attendees (scoped)
+  const { data: attendeesData = [], error: attendeesError } = await supabase
     .from("open_home_attendees")
     .select(
       `
@@ -99,8 +126,13 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
     `
     )
     .eq("event_id", event.id)
+    .eq("user_id", user.id)
     .order("created_at", { ascending: true })
     .returns<Attendee[]>();
+
+  if (attendeesError) {
+    console.error("Error loading attendees for open home", attendeesError);
+  }
 
   const attendees: Attendee[] = attendeesData ?? [];
 

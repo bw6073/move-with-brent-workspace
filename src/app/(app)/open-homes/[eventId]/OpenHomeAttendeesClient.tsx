@@ -1,4 +1,4 @@
-// app/(app)/open-homes/[eventId]/OpenHomeAttendeesClient.tsx
+// src/app/(app)/open-homes/[eventId]/OpenHomeAttendeesClient.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -68,7 +68,12 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
       );
 
       if (!res.ok) {
-        console.error("Failed to update attendee", await res.text());
+        const text = await res.text().catch(() => "");
+        console.error(
+          "Failed to update attendee",
+          res.status,
+          text || "(no body)"
+        );
         alert("Something went wrong saving attendee changes.");
         return;
       }
@@ -164,7 +169,6 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Header row */}
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-slate-900">Attendees</h2>
 
@@ -172,7 +176,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
           <span>Total: {total}</span>
           {total > 0 && (
             <a
-              href={`/api/open-homes/${eventId}/export/csv`}
+              href={`/api/open-homes/${eventId}/export_csv`} // ✅ fixed
               className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 font-medium text-slate-700 hover:bg-slate-50"
             >
               Export CSV
@@ -181,7 +185,6 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
         </div>
       </div>
 
-      {/* Table card */}
       {attendees.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-sm">
           No attendees recorded yet for this open home.
@@ -234,7 +237,6 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
 
                     return (
                       <React.Fragment key={a.id}>
-                        {/* main row */}
                         <tr className="border-b border-slate-100 align-top">
                           <td className="whitespace-nowrap px-3 py-2 text-slate-900">
                             {a.first_name} {a.last_name}
@@ -314,7 +316,6 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
                           </td>
                         </tr>
 
-                        {/* inline edit row */}
                         {isEditingRow && (
                           <tr className="border-b border-slate-100">
                             <td colSpan={8} className="bg-slate-50 px-3 py-3">

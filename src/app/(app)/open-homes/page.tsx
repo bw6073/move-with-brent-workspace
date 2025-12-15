@@ -20,8 +20,20 @@ type OpenHomeRow = {
 export default async function OpenHomesIndexPage() {
   const supabase = await createClient();
 
-  // (Auth is already enforced by (app)/layout,
-  // so we don't *need* to check user here for visibility.)
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return (
+      <div className="mx-auto max-w-5xl px-6 py-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          You must be logged in to view open homes.
+        </div>
+      </div>
+    );
+  }
 
   const { data, error } = await supabase
     .from("open_home_events")
@@ -41,6 +53,7 @@ export default async function OpenHomesIndexPage() {
       )
     `
     )
+    .eq("user_id", user.id) // ✅ defence in depth
     .order("start_at", { ascending: true });
 
   if (error) {
@@ -66,7 +79,6 @@ export default async function OpenHomesIndexPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-6">
-      {/* Header row, same feel as other pages */}
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Open homes</h1>
@@ -85,7 +97,6 @@ export default async function OpenHomesIndexPage() {
         </div>
       </header>
 
-      {/* Table card */}
       {!events || events.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
           No open homes scheduled yet. Use{" "}
