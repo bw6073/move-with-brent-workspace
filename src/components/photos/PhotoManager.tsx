@@ -4,11 +4,20 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  type DropResult,
-} from "@hello-pangea/dnd";
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  rectSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { SortablePhotoCard } from "./SortablePhotoCard";
 
 type EntityType = "property" | "appraisal";
 
@@ -86,6 +95,14 @@ export function PhotoManager({ entityType, entityId }: Props) {
     }
     return selectedArea;
   }, [selectedArea, customArea]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 120, tolerance: 6 },
+    }),
+    useSensor(KeyboardSensor)
+  );
 
   async function loadPhotos() {
     try {
@@ -212,15 +229,7 @@ export function PhotoManager({ entityType, entityId }: Props) {
     }
   }
 
-  async function handleDragEnd(result: DropResult) {
-    if (!result.destination) return;
-
-    const updated = Array.from(photos);
-    const [moved] = updated.splice(result.source.index, 1);
-    updated.splice(result.destination.index, 0, moved);
-
-    setPhotos(updated);
-
+  async function persistOrder(updated: Photo[]) {
     try {
       const res = await fetch("/api/photos/reorder", {
         method: "POST",
@@ -245,6 +254,20 @@ export function PhotoManager({ entityType, entityId }: Props) {
       console.error(err);
       setError("Error saving photo order");
     }
+  }
+
+  async function handleDragEnd(event: any) {
+    const { active, over } = event;
+    if (!over) return;
+    if (active.id === over.id) return;
+
+    const oldIndex = photos.findIndex((p) => p.id === active.id);
+    const newIndex = photos.findIndex((p) => p.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const updated = arrayMove(photos, oldIndex, newIndex);
+    setPhotos(updated);
+    await persistOrder(updated);
   }
 
   async function deletePhoto(photoId: number) {
@@ -292,12 +315,10 @@ export function PhotoManager({ entityType, entityId }: Props) {
   return (
     <>
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
-        {/* Header row */}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Area select */}
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-600">Area</label>
               <select
@@ -327,7 +348,6 @@ export function PhotoManager({ entityType, entityId }: Props) {
               )}
             </div>
 
-            {/* Add from Photos (iPad-safe) */}
             <label className="inline-flex cursor-pointer items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100">
               <span>{uploading ? "Saving…" : "Add from Photos"}</span>
               <input
@@ -341,7 +361,6 @@ export function PhotoManager({ entityType, entityId }: Props) {
               />
             </label>
 
-            {/* Take photo (camera capture) */}
             <label className="inline-flex cursor-pointer items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100">
               <span>{uploading ? "Saving…" : "Take photo"}</span>
               <input
@@ -370,81 +389,67 @@ export function PhotoManager({ entityType, entityId }: Props) {
         )}
 
         {photos.length > 0 && (
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId="photo-grid" direction="horizontal">
-              {(provided) => (
-                <div
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3"
-                >
-                  {photos.map((photo, index) => (
-                    <Draggable
-                      key={photo.id}
-                      draggableId={String(photo.id)}
-                      index={index}
-                    >
-                      {(provided) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          style={provided.draggableProps.style}
-                          className="group relative cursor-grab rounded-2xl border border-slate-200 bg-slate-50 p-2 active:cursor-grabbing"
-                        >
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={photos.map((p) => p.id)}
+              strategy={rectSortingStrategy}
+            >
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+                {photos.map((photo) => (
+                  <SortablePhotoCard key={photo.id} id={photo.id}>
+                    <div className="group relative cursor-grab rounded-2xl border border-slate-200 bg-slate-50 p-2 active:cursor-grabbing">
+                      <button
+                        type="button"
+                        className="block w-full"
+                        onClick={() => setLightboxPhoto(photo)}
+                      >
+                        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-slate-200">
+                          <img
+                            src={getThumbUrl(photo)}
+                            alt={photo.caption ?? photo.area_label ?? "Photo"}
+                            draggable={false}
+                            className="absolute inset-0 h-full w-full object-contain bg-slate-200"
+                          />
+                        </div>
+                      </button>
+
+                      <span className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
+                        {photo.area_label ?? "General"}
+                      </span>
+
+                      <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                        <div className="text-xs text-slate-600">
+                          {photo.is_primary ? "Primary photo" : "\u00A0"}
+                        </div>
+                        <div className="flex gap-1">
+                          {!photo.is_primary && (
+                            <button
+                              type="button"
+                              onClick={() => setPrimary(photo.id)}
+                              className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-slate-700"
+                            >
+                              Set primary
+                            </button>
+                          )}
                           <button
                             type="button"
-                            className="block w-full"
-                            onClick={() => setLightboxPhoto(photo)}
+                            onClick={() => deletePhoto(photo.id)}
+                            className="rounded bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-red-700"
                           >
-                            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-slate-200">
-                              <img
-                                src={getThumbUrl(photo)}
-                                alt={
-                                  photo.caption ?? photo.area_label ?? "Photo"
-                                }
-                                draggable={false}
-                                className="absolute inset-0 h-full w-full object-contain bg-slate-200"
-                              />
-                            </div>
+                            Delete
                           </button>
-
-                          <span className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
-                            {photo.area_label ?? "General"}
-                          </span>
-
-                          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-                            <div className="text-xs text-slate-600">
-                              {photo.is_primary ? "Primary photo" : "\u00A0"}
-                            </div>
-                            <div className="flex gap-1">
-                              {!photo.is_primary && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPrimary(photo.id)}
-                                  className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-slate-700"
-                                >
-                                  Set primary
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => deletePhoto(photo.id)}
-                                className="rounded bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-red-700"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
                         </div>
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          </DragDropContext>
+                      </div>
+                    </div>
+                  </SortablePhotoCard>
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
