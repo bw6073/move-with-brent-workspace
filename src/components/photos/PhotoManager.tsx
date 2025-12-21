@@ -1,7 +1,7 @@
 // src/components/photos/PhotoManager.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   DragDropContext,
@@ -55,7 +55,7 @@ const PRESET_AREAS = [
   "View",
   "Aerial",
   "Other",
-];
+] as const;
 
 const THUMB_WIDTH = 300;
 
@@ -67,17 +67,31 @@ export function PhotoManager({ entityType, entityId }: Props) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedArea, setSelectedArea] = useState("General");
+  const [selectedArea, setSelectedArea] =
+    useState<(typeof PRESET_AREAS)[number]>("General");
   const [customArea, setCustomArea] = useState("");
 
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
+
+  // Two separate inputs so iPadOS can show proper Photos picker vs camera capture.
+  const photosInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+
+  const title =
+    entityType === "appraisal" ? "Appraisal photos" : "Property photos";
+
+  const computedAreaLabel = useMemo(() => {
+    if (selectedArea === "Other" && customArea.trim() !== "") {
+      return customArea.trim();
+    }
+    return selectedArea;
+  }, [selectedArea, customArea]);
 
   async function loadPhotos() {
     try {
       setLoading(true);
       setError(null);
 
-      // If we don't have an entityId yet (new/unsaved), don't hit the API
       if (!entityId) {
         setPhotos([]);
         return;
@@ -89,7 +103,7 @@ export function PhotoManager({ entityType, entityId }: Props) {
       });
 
       const res = await fetch(`/api/photos?${params.toString()}`);
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         console.error("Failed to load photos", res.status, json);
@@ -109,19 +123,15 @@ export function PhotoManager({ entityType, entityId }: Props) {
 
   useEffect(() => {
     void loadPhotos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityType, entityId]);
 
-  const areaLabel = () => {
-    if (selectedArea === "Other" && customArea.trim() !== "") {
-      return customArea.trim();
-    }
-    return selectedArea;
-  };
+  function resetInputs() {
+    if (photosInputRef.current) photosInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+  }
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files?.length) return;
-
+  async function uploadFiles(files: FileList) {
     setUploading(true);
     setError(null);
 
@@ -132,9 +142,11 @@ export function PhotoManager({ entityType, entityId }: Props) {
       } = await supabase.auth.getUser();
 
       if (!user || userError) throw new Error("Not logged in");
+      if (!entityId)
+        throw new Error("Please save first before uploading photos");
 
       const existing = photos.length;
-      const label = areaLabel();
+      const label = computedAreaLabel;
 
       for (const [index, file] of Array.from(files).entries()) {
         const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
@@ -163,20 +175,43 @@ export function PhotoManager({ entityType, entityId }: Props) {
           }),
         });
 
-        if (!res.ok) throw new Error("Failed to save photo");
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || "Failed to save photo");
+        }
       }
 
       await loadPhotos();
-      e.target.value = "";
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message ?? "Upload error");
     } finally {
+      resetInputs();
       setUploading(false);
     }
   }
 
-  // -------- DRAG + DROP (updated logging) --------
+  async function handlePhotosChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files?.length) return;
+
+    try {
+      await uploadFiles(files);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message ?? "Upload error");
+    }
+  }
+
+  async function handleCameraChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files?.length) return;
+
+    try {
+      await uploadFiles(files);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message ?? "Upload error");
+    }
+  }
+
   async function handleDragEnd(result: DropResult) {
     if (!result.destination) return;
 
@@ -202,9 +237,7 @@ export function PhotoManager({ entityType, entityId }: Props) {
         try {
           const body = await res.json();
           if (body?.error) message = body.error;
-        } catch {
-          // ignore JSON parse issues, keep default message
-        }
+        } catch {}
         console.error("Reorder error", res.status, message);
         setError(message);
       }
@@ -215,9 +248,7 @@ export function PhotoManager({ entityType, entityId }: Props) {
   }
 
   async function deletePhoto(photoId: number) {
-    const res = await fetch(`/api/photos/${photoId}`, {
-      method: "DELETE",
-    });
+    const res = await fetch(`/api/photos/${photoId}`, { method: "DELETE" });
 
     if (!res.ok) {
       console.error(await res.text());
@@ -226,7 +257,6 @@ export function PhotoManager({ entityType, entityId }: Props) {
     }
 
     if (lightboxPhoto?.id === photoId) setLightboxPhoto(null);
-
     await loadPhotos();
   }
 
@@ -259,9 +289,6 @@ export function PhotoManager({ entityType, entityId }: Props) {
   const getFullUrl = (p: Photo) =>
     supabase.storage.from(p.bucket).getPublicUrl(p.storage_path).data.publicUrl;
 
-  const title =
-    entityType === "appraisal" ? "Appraisal photos" : "Property photos";
-
   return (
     <>
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
@@ -270,17 +297,25 @@ export function PhotoManager({ entityType, entityId }: Props) {
           <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Area select */}
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-600">Area</label>
               <select
                 value={selectedArea}
-                onChange={(e) => setSelectedArea(e.target.value)}
+                onChange={(e) =>
+                  setSelectedArea(
+                    e.target.value as (typeof PRESET_AREAS)[number]
+                  )
+                }
                 className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-800"
               >
                 {PRESET_AREAS.map((a) => (
-                  <option key={a}>{a}</option>
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
                 ))}
               </select>
+
               {selectedArea === "Other" && (
                 <input
                   type="text"
@@ -292,15 +327,30 @@ export function PhotoManager({ entityType, entityId }: Props) {
               )}
             </div>
 
+            {/* Add from Photos (iPad-safe) */}
             <label className="inline-flex cursor-pointer items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100">
-              <span>{uploading ? "Saving…" : "Add / take photos"}</span>
+              <span>{uploading ? "Saving…" : "Add from Photos"}</span>
               <input
+                ref={photosInputRef}
                 type="file"
                 accept="image/*"
                 multiple
+                className="hidden"
+                onChange={handlePhotosChange}
+                disabled={uploading}
+              />
+            </label>
+
+            {/* Take photo (camera capture) */}
+            <label className="inline-flex cursor-pointer items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100">
+              <span>{uploading ? "Saving…" : "Take photo"}</span>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
                 capture="environment"
                 className="hidden"
-                onChange={handleUpload}
+                onChange={handleCameraChange}
                 disabled={uploading}
               />
             </label>
@@ -315,8 +365,7 @@ export function PhotoManager({ entityType, entityId }: Props) {
 
         {!loading && photos.length === 0 && (
           <p className="text-sm text-slate-500">
-            No photos yet. Choose an area and tap &ldquo;Add / take
-            photos&rdquo;.
+            No photos yet. Choose an area and add photos.
           </p>
         )}
 
