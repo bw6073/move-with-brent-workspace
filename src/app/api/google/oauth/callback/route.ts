@@ -1,3 +1,4 @@
+// src/app/api/google/oauth/callback/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -14,12 +15,30 @@ export async function GET(req: Request) {
     );
   }
 
-  let decoded: { userId: string };
+  // Optional: basic state parse (keep for CSRF/flow integrity),
+  // but DO NOT use it to choose the user.
   try {
-    decoded = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
+    JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
   } catch {
     return NextResponse.redirect(
       new URL("/settings/calendar?error=bad_state", url.origin)
+    );
+  }
+
+  const supabase = await createClient();
+
+  // ✅ Bind the connection to the currently logged-in CRM user
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.redirect(
+      new URL(
+        "/login?next=/settings/calendar&error=unauthenticated",
+        url.origin
+      )
     );
   }
 
@@ -37,7 +56,9 @@ export async function GET(req: Request) {
   });
 
   const tokenData = await tokenResp.json();
+
   if (!tokenResp.ok) {
+    // tokenData may contain error_description
     return NextResponse.redirect(
       new URL(`/settings/calendar?error=token_exchange_failed`, url.origin)
     );
@@ -46,11 +67,8 @@ export async function GET(req: Request) {
   const expiresIn = Number(tokenData.expires_in ?? 3600);
   const expiry = new Date(Date.now() + expiresIn * 1000).toISOString();
 
-  const supabase = await createClient();
-
-  // upsert tokens under the decoded userId (state binds user)
-  const { error } = await supabase.from("google_accounts").upsert({
-    user_id: decoded.userId,
+  const { error: upsertError } = await supabase.from("google_accounts").upsert({
+    user_id: user.id,
     calendar_id: "primary",
     access_token: tokenData.access_token,
     refresh_token: tokenData.refresh_token ?? null,
@@ -60,9 +78,9 @@ export async function GET(req: Request) {
     updated_at: new Date().toISOString(),
   });
 
-  if (error) {
+  if (upsertError) {
     return NextResponse.redirect(
-      new URL(`/settings/calendar?error=db_save_failed`, url.origin)
+      new URL("/settings/calendar?error=db_save_failed", url.origin)
     );
   }
 

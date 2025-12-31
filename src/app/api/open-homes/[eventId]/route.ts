@@ -1,6 +1,10 @@
 // app/api/open-homes/[eventId]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  deleteGoogleCalendarEvent,
+  refreshGoogleToken,
+} from "@/lib/google/calendar";
 
 type Context = { params: Promise<{ eventId: string }> };
 
@@ -59,7 +63,6 @@ export async function PATCH(req: NextRequest, context: Context) {
   }
 
   if (!data) {
-    // Either not found OR not owned (RLS + this filter)
     return NextResponse.json({ error: "Open home not found" }, { status: 404 });
   }
 
@@ -78,6 +81,59 @@ export async function DELETE(_req: NextRequest, context: Context) {
 
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+  }
+
+  // 0) Load the open home first (to get google_event_id)
+  const { data: eventRow, error: loadErr } = await supabase
+    .from("open_home_events")
+    .select("id, google_event_id")
+    .eq("id", eventId)
+    .eq("user_id", user.id)
+    .maybeSingle<{ id: number; google_event_id: string | null }>();
+
+  if (loadErr) {
+    console.error("Error loading open home before delete", loadErr);
+    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+  }
+
+  if (!eventRow) {
+    return NextResponse.json({ error: "Open home not found" }, { status: 404 });
+  }
+
+  // 0b) If linked, attempt to delete the Google Calendar event (non-blocking)
+  if (eventRow.google_event_id) {
+    const { data: gacc, error: gerr } = await supabase
+      .from("google_accounts")
+      .select("calendar_id, access_token, refresh_token, expiry")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!gerr && gacc) {
+      try {
+        const accessToken = await refreshGoogleToken(
+          gacc as any,
+          async (patch) => {
+            await supabase
+              .from("google_accounts")
+              .update({
+                access_token: patch.access_token,
+                expiry: patch.expiry,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("user_id", user.id);
+          }
+        );
+
+        await deleteGoogleCalendarEvent({
+          accessToken,
+          calendarId: gacc.calendar_id || "primary",
+          eventId: eventRow.google_event_id,
+        });
+      } catch (e) {
+        // Don't block CRM deletion if Google delete fails
+        console.warn("Failed to delete Google Calendar event", e);
+      }
+    }
   }
 
   // 1) Delete attendees for this event (scoped)

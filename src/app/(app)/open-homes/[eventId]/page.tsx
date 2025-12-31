@@ -13,6 +13,7 @@ type OpenHomeEvent = {
   end_at: string | null;
   notes: string | null;
   user_id: string;
+  google_event_id: string | null;
 };
 
 type Property = {
@@ -61,7 +62,9 @@ export default async function OpenHomeAdminPage(props: RouteProps) {
   // 1) Load the event (scoped to the current user)
   const { data: event, error: eventError } = await supabase
     .from("open_home_events")
-    .select("id, user_id, property_id, title, start_at, end_at, notes")
+    .select(
+      "id, user_id, property_id, title, start_at, end_at, notes, google_event_id"
+    )
     .eq("id", eventId)
     .eq("user_id", user.id)
     .maybeSingle<OpenHomeEvent>();

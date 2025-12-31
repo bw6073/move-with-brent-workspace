@@ -1,3 +1,4 @@
+// src/app/(app)/open-homes/[eventId]/edit/page.tsx
 import { createClient } from "@/lib/supabase/server";
 import { EditOpenHomeForm } from "./EditOpenHomeForm";
 
@@ -8,6 +9,7 @@ type OpenHomeEvent = {
   start_at: string;
   end_at: string | null;
   notes: string | null;
+  google_event_id: string | null;
 };
 
 type Property = {
@@ -27,10 +29,15 @@ export default async function EditOpenHomePage({
   const supabase = await createClient();
 
   // 1) Load the event
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const { data: event, error: eventError } = await supabase
     .from("open_home_events")
-    .select("id, property_id, title, start_at, end_at, notes")
+    .select("id, property_id, title, start_at, end_at, notes, google_event_id")
     .eq("id", eventId)
+    .eq("user_id", user?.id ?? "")
     .single<OpenHomeEvent>();
 
   if (eventError || !event) {
