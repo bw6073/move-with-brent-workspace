@@ -107,7 +107,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
     <div className="flex min-h-screen bg-slate-50 overflow-x-hidden">
       {/* SIDEBAR */}
       <aside
-        className={`flex flex-col border-r border-slate-200 bg-white transition-all duration-200 ${
+        className={`sticky top-0 h-screen flex flex-col border-r border-slate-200 bg-white transition-all duration-200 ${
           collapsed ? "w-14" : "w-60"
         }`}
       >
@@ -137,7 +137,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
         </div>
 
         {/* Nav */}
-        <nav className="mt-2 flex-1 space-y-1 px-1">
+        <nav className="mt-2 flex-1 space-y-1 px-1 overflow-y-auto">
           {navItems.map((item) => {
             const active =
               item.href === "/"
@@ -175,7 +175,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
       </aside>
 
       {/* MAIN AREA */}
-      <div className="flex min-h-screen flex-1 min-w-0 flex-col">
+      <div className="flex h-screen flex-1 min-w-0 flex-col overflow-y-auto">
         {/* Header */}
         <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-4">
@@ -200,7 +200,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
         </header>
 
         {/* MAIN CONTENT */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+        <main className="flex-1 p-4 lg:p-6">{children}</main>
 
         {/* FOOTER */}
         <Footer />
