@@ -40,13 +40,41 @@ export function SettingsClient({
     setErrorMsg(null);
   };
 
-  const safeText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-  const normaliseEmail = (v: unknown) => safeText(v).toLowerCase();
-
   const refreshEverywhere = async () => {
     await supabase.auth.refreshSession().catch(() => {});
     router.refresh();
   };
+
+  const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
+
+  const disconnectGoogle = async () => {
+    const ok = window.confirm(
+      "Disconnect Google Calendar? Home opens will stop syncing until you reconnect."
+    );
+    if (!ok) return;
+
+    clearNotices();
+    setDisconnectingGoogle(true);
+
+    try {
+      const res = await fetch("/api/google/disconnect", { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Disconnect failed");
+      }
+
+      await refreshEverywhere();
+      setMessage("Google Calendar disconnected.");
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Failed to disconnect Google Calendar.");
+    } finally {
+      setDisconnectingGoogle(false);
+    }
+  };
+
+  const safeText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const normaliseEmail = (v: unknown) => safeText(v).toLowerCase();
 
   const saveProfile = async () => {
     clearNotices();
@@ -247,12 +275,25 @@ export function SettingsClient({
             )}
           </div>
 
-          <a
-            href="/api/google/oauth/start"
-            className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
-          >
-            {googleConnected ? "Reconnect" : "Connect Google Calendar"}
-          </a>
+          <div className="flex items-center gap-2">
+            <a
+              href="/api/google/oauth/start"
+              className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+            >
+              {googleConnected ? "Reconnect" : "Connect Google Calendar"}
+            </a>
+
+            {googleConnected && (
+              <button
+                type="button"
+                onClick={disconnectGoogle}
+                disabled={disconnectingGoogle}
+                className="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
+              >
+                {disconnectingGoogle ? "Disconnecting…" : "Disconnect"}
+              </button>
+            )}
+          </div>
         </div>
 
         <p className="mt-3 text-xs text-slate-500">
