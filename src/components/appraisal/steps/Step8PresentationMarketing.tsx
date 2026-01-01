@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type { FormState } from "../config/types";
 import { MARKETING_CHANNELS } from "../config/constants";
 
@@ -9,9 +9,12 @@ type Step8PresentationMarketingProps = {
   updateField: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
   toggleArrayValue: (key: keyof FormState, value: string) => void;
 
-  // 👇 add these from the parent (AppraisalForm) so the card can sync
+  // from parent (AppraisalForm) so this card can sync
   appraisalId: number;
   googleConnected: boolean;
+
+  // ✅ ensure followUpAt is persisted before syncing
+  onSaveDraft: () => Promise<void>;
 };
 
 function toDateTimeLocal(v: unknown) {
@@ -55,13 +58,21 @@ export default function Step8PresentationMarketing({
   toggleArrayValue,
   appraisalId,
   googleConnected,
+  onSaveDraft,
 }: Step8PresentationMarketingProps) {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+
+  const clearMsgSoon = () => {
+    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = window.setTimeout(() => setSyncMsg(null), 3500);
+  };
 
   // Back-compat: if old followUpDate exists but followUpAt isn't set, use 09:00 local.
   const followUpAtIso = useMemo(() => {
     const anyForm = form as any;
+
     const followUpAt = anyForm.followUpAt as string | null | undefined;
     if (followUpAt) return followUpAt;
 
@@ -73,12 +84,15 @@ export default function Step8PresentationMarketing({
   }, [form]);
 
   const handleSync = async () => {
-    if (!googleConnected) return;
+    if (!googleConnected || syncing) return;
 
     setSyncing(true);
     setSyncMsg(null);
 
     try {
+      // ✅ save first so followUpAt is in the DB for the server-side sync route
+      await onSaveDraft();
+
       const res = await fetch(`/api/appraisals/${appraisalId}/sync-calendar`, {
         method: "POST",
       });
@@ -87,12 +101,12 @@ export default function Step8PresentationMarketing({
       if (!res.ok) throw new Error(json?.error || "Sync failed");
 
       setSyncMsg("Synced to Google ✅");
+      clearMsgSoon();
     } catch (e: any) {
       setSyncMsg(e?.message || "Failed to sync.");
+      clearMsgSoon();
     } finally {
       setSyncing(false);
-      // Optional: auto-clear message after a moment
-      window.setTimeout(() => setSyncMsg(null), 3500);
     }
   };
 
@@ -101,7 +115,7 @@ export default function Step8PresentationMarketing({
       {/* PRESENTATION OVERVIEW */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-slate-900">
-          Presentation, marketing & follow-up
+          Presentation, marketing &amp; follow-up
         </h2>
         <p className="text-sm text-slate-500">
           How the home presents, who you&apos;ll target and what happens next.
@@ -208,8 +222,8 @@ export default function Step8PresentationMarketing({
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Follow-up</h3>
             <p className="mt-1 text-xs text-slate-500">
-              Set a follow-up time and optionally sync the appointment to
-              Google.
+              Set a follow-up time and sync it to Google (uses the follow-up
+              time).
             </p>
           </div>
 
@@ -243,7 +257,7 @@ export default function Step8PresentationMarketing({
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-slate-700">
-              Next steps & reminders
+              Next steps &amp; reminders
             </label>
             <textarea
               value={form.followUpActions}
@@ -257,7 +271,7 @@ export default function Step8PresentationMarketing({
 
           <div>
             <label className="block text-sm font-medium text-slate-700">
-              Follow-up date & time
+              Follow-up date &amp; time
             </label>
             <input
               type="datetime-local"
@@ -271,7 +285,7 @@ export default function Step8PresentationMarketing({
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
             <p className="mt-1 text-xs text-slate-500">
-              This can drive reminders and the Google calendar event time.
+              This drives reminders and the Google Calendar event time.
             </p>
           </div>
         </div>

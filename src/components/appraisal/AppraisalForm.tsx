@@ -1,7 +1,7 @@
 // src/components/appraisal/AppraisalForm.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { CreateDealButton } from "@/components/pipeline/CreateDealButton";
 
@@ -84,6 +84,9 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
   const [syncing, setSyncing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Google status for Step 8
+  const [googleConnected, setGoogleConnected] = useState(false);
+
   // ---------------------------------------------------------
   // FORM STATE (WITH PREFILL CONTACT SUPPORT)
   // ---------------------------------------------------------
@@ -133,6 +136,35 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
   });
 
   // ---------------------------------------------------------
+  // LOAD GOOGLE CONNECTED (edit mode only)
+  // ---------------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadGoogleStatus = async () => {
+      if (mode !== "edit" || typeof appraisalId !== "number") return;
+
+      try {
+        const res = await fetch("/api/google/status", { cache: "no-store" });
+        if (!res.ok) {
+          if (!cancelled) setGoogleConnected(false);
+          return;
+        }
+        const json = await res.json().catch(() => ({}));
+        if (!cancelled) setGoogleConnected(Boolean(json?.connected));
+      } catch {
+        if (!cancelled) setGoogleConnected(false);
+      }
+    };
+
+    void loadGoogleStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, appraisalId]);
+
+  // ---------------------------------------------------------
   // CONTACT OPTIONS FOR LINKING MULTIPLE CONTACTS
   // ---------------------------------------------------------
 
@@ -155,7 +187,6 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         }
 
         const json = await res.json();
-        console.log("🟢 Contacts JSON for linking:", json);
 
         const rawList = Array.isArray(json)
           ? json
@@ -209,7 +240,7 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
       }
     };
 
-    syncNow();
+    void syncNow();
 
     const handleOnline = () => {
       void syncNow();
@@ -230,11 +261,9 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
   const toggleLinkedContact = (id: number) => {
     setForm((prev) => {
       const current = new Set(prev.contactIds ?? []);
-      if (current.has(id)) {
-        current.delete(id);
-      } else {
-        current.add(id);
-      }
+      if (current.has(id)) current.delete(id);
+      else current.add(id);
+
       const contactIds = Array.from(current);
       return {
         ...prev,
@@ -394,19 +423,15 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
   };
 
   // ---------------------------------------------------------
-  // SAVE / DELETE (WITH OFFLINE QUEUE FOR NEW APPRAISALS)
+  // SAVE / DELETE
   // ---------------------------------------------------------
 
-  const handleSave = async (markComplete: boolean) => {
-    if (saving) return;
-    setSaving(true);
-
-    try {
+  const saveCore = useCallback(
+    async (markComplete: boolean) => {
       if (!form.streetAddress || !form.suburb || !form.postcode) {
-        alert(
+        throw new Error(
           "Please fill in street address, suburb and postcode before saving."
         );
-        return;
       }
 
       const payload = {
@@ -418,16 +443,13 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         state: form.state || "WA",
         data: form,
         contactIds: form.contactIds ?? [],
-        // ✅ Use the prop only; don't touch form.propertyId
         property_id: propertyId ?? null,
       };
 
-      const isEditing = mode === "edit" && appraisalId;
-
+      const isEditing = mode === "edit" && typeof appraisalId === "number";
       const url = isEditing
         ? `/api/appraisals/${appraisalId}`
         : "/api/appraisals";
-
       const method = isEditing ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -436,29 +458,33 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         body: JSON.stringify(payload),
       });
 
+      const json = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const text = await res.text();
-        console.error("Save error status:", res.status, res.statusText);
-        console.error("Save error body:", text);
-        alert("There was a problem saving the appraisal.");
-        return;
+        const msg = json?.error || "There was a problem saving the appraisal.";
+        throw new Error(msg);
       }
 
-      const saved = await res.json();
-      console.log("Saved appraisal:", saved);
+      return json;
+    },
+    [form, mode, appraisalId, propertyId]
+  );
+
+  const handleSave = async (markComplete: boolean) => {
+    if (saving) return;
+    setSaving(true);
+
+    try {
+      const saved = await saveCore(markComplete);
 
       // Try to pull the new ID out of the response
       let newId: number | null = null;
 
       if (saved) {
-        if (saved.appraisal?.id) {
-          newId = saved.appraisal.id as number;
-        } else if (saved.id) {
-          newId = saved.id as number;
-        }
+        if (saved.appraisal?.id) newId = saved.appraisal.id as number;
+        else if (saved.id) newId = saved.id as number;
       }
 
-      // If we just CREATED a new appraisal, jump to the edit page for it
       if (mode === "create" && newId) {
         alert(
           markComplete
@@ -469,22 +495,25 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         return;
       }
 
-      // Normal edit case (already on /edit route)
       alert(
         markComplete
           ? "Appraisal saved and marked as completed."
           : "Appraisal saved as draft."
       );
-    } catch (err) {
-      console.error("Save error (network/JS):", err);
-      alert("Unexpected error while saving the appraisal.");
+    } catch (err: any) {
+      alert(err?.message || "Unexpected error while saving the appraisal.");
     } finally {
       setSaving(false);
     }
   };
 
+  // ✅ used by Step 8 before syncing
+  const onSaveDraft = useCallback(async () => {
+    await saveCore(false);
+  }, [saveCore]);
+
   const handleDelete = async () => {
-    if (!appraisalId) return;
+    if (typeof appraisalId !== "number") return;
 
     const confirmed = window.confirm(
       "Are you sure you want to delete this appraisal? This cannot be undone."
@@ -513,14 +542,13 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
 
   const progressPercent = (step / 9) * 100;
 
-  // ---------------------------------------------------------
-  // RENDER
-  // ---------------------------------------------------------
-
   const headerTitle =
     (form.appraisalTitle && form.appraisalTitle.trim()) ||
     (form.streetAddress && form.streetAddress.trim()) ||
     "Appraisal form";
+
+  const canSyncFromStep8 =
+    mode === "edit" && typeof appraisalId === "number" && appraisalId > 0;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -673,8 +701,9 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
               form={form}
               updateField={updateField}
               toggleArrayValue={toggleArrayValue}
-              appraisalId={appraisalId ?? 0}
-              googleConnected={true /* replace with real value */}
+              appraisalId={canSyncFromStep8 ? (appraisalId as number) : 0}
+              googleConnected={googleConnected}
+              onSaveDraft={onSaveDraft}
             />
           )}
 
@@ -702,7 +731,6 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         {/* Navigation buttons */}
         <div className="mt-6 border-t pt-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {/* Back button – hidden on step 1 */}
             <button
               type="button"
               onClick={goBack}
@@ -712,9 +740,7 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
               Back
             </button>
 
-            {/* Right-side buttons */}
             <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-              {/* Save draft – always visible */}
               <button
                 type="button"
                 onClick={() => handleSave(false)}
@@ -724,7 +750,6 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
                 {saving ? "Saving…" : "Save draft"}
               </button>
 
-              {/* Save & complete – always visible */}
               <button
                 type="button"
                 onClick={() => handleSave(true)}
@@ -734,7 +759,6 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
                 {saving ? "Saving…" : "Save & complete"}
               </button>
 
-              {/* Delete – only when editing */}
               {mode === "edit" && appraisalId && (
                 <button
                   type="button"
@@ -745,7 +769,6 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
                 </button>
               )}
 
-              {/* Next – hide on final step */}
               {step < 9 && (
                 <button
                   type="button"

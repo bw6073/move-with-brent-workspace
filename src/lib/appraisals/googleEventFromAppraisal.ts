@@ -4,29 +4,26 @@ import "server-only";
 type AppraisalRow = Record<string, any>;
 
 function pickDateTime(a: AppraisalRow): string | null {
-  // ✅ 1) Prefer JSON data field (your Step 8 card writes to this)
-  const followUpAt =
-    a?.data?.followUpAt ||
-    a?.data?.follow_up_at ||
-    a?.data?.appointmentAt ||
-    a?.data?.appointment_at;
+  const data = (a?.data ?? {}) as Record<string, any>;
 
-  if (typeof followUpAt === "string" && followUpAt.trim()) return followUpAt;
-
-  // ✅ 2) Back-compat: if only a date exists, assume 09:00 local
-  const followUpDate = a?.data?.followUpDate || a?.data?.follow_up_date;
-  if (typeof followUpDate === "string" && followUpDate.trim()) {
-    const d = new Date(`${followUpDate}T09:00:00`);
-    if (!Number.isNaN(d.getTime())) return d.toISOString();
-  }
-
-  // ✅ 3) Finally try top-level columns (if you ever add them later)
+  // ✅ Your actual source (Step 8)
   return (
+    data.followUpAt ||
+    a.followUpAt ||
+    // (optional legacy support)
+    (data.followUpDate ? `${data.followUpDate}T09:00:00.000+08:00` : null) ||
+    // other common names (top-level or nested)
+    data.appointment_at ||
     a.appointment_at ||
+    data.appraisal_at ||
     a.appraisal_at ||
+    data.inspection_at ||
     a.inspection_at ||
+    data.meeting_at ||
     a.meeting_at ||
+    data.appointment_start_at ||
     a.appointment_start_at ||
+    data.start_at ||
     a.start_at ||
     null
   );
@@ -40,54 +37,49 @@ export function googleEventFromAppraisal(appraisal: AppraisalRow) {
     );
   }
 
-  const start = new Date(startIso);
+  const data = (appraisal?.data ?? {}) as Record<string, any>;
 
+  const start = new Date(startIso);
   const endIso =
-    appraisal?.data?.followUpEndAt ||
-    appraisal?.data?.appointment_end_at ||
+    data.followUpEndAt ||
+    appraisal.followUpEndAt ||
+    data.appointment_end_at ||
     appraisal.appointment_end_at ||
+    data.end_at ||
     appraisal.end_at ||
     new Date(start.getTime() + 45 * 60 * 1000).toISOString();
 
-  const titleBits = [
-    "Appraisal",
-    appraisal?.data?.streetAddress ||
-      appraisal.street_address ||
-      appraisal.address ||
-      appraisal.property_address,
-    appraisal?.data?.suburb || appraisal.suburb,
-  ].filter(Boolean);
-
-  const summary = titleBits.join(" – ") || "Appraisal";
+  const summary =
+    [
+      "Appraisal",
+      data.streetAddress || appraisal.street_address || appraisal.address,
+      data.suburb || appraisal.suburb,
+    ]
+      .filter(Boolean)
+      .join(" – ") || "Appraisal";
 
   const descriptionLines = [
-    appraisal?.data?.ownerNames ? `Owner: ${appraisal.data.ownerNames}` : null,
-    appraisal?.data?.ownerPhonePrimary
-      ? `Phone: ${appraisal.data.ownerPhonePrimary}`
-      : null,
-    appraisal?.data?.ownerEmail ? `Email: ${appraisal.data.ownerEmail}` : null,
-    appraisal?.data?.followUpActions
-      ? `Notes: ${appraisal.data.followUpActions}`
-      : null,
+    data.ownerNames ? `Owner: ${data.ownerNames}` : null,
+    data.ownerPhonePrimary ? `Phone: ${data.ownerPhonePrimary}` : null,
+    data.ownerEmail ? `Email: ${data.ownerEmail}` : null,
+    data.followUpActions ? `Notes: ${data.followUpActions}` : null,
     appraisal.id ? `CRM Appraisal ID: ${appraisal.id}` : null,
   ].filter(Boolean);
 
-  const location = [
-    appraisal?.data?.streetAddress ||
-      appraisal.street_address ||
-      appraisal.address ||
-      appraisal.property_address,
-    appraisal?.data?.suburb || appraisal.suburb,
-    appraisal?.data?.state || appraisal.state || "WA",
-    appraisal?.data?.postcode || appraisal.postcode,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const location =
+    [
+      data.streetAddress || appraisal.street_address || appraisal.address,
+      data.suburb || appraisal.suburb,
+      data.state || appraisal.state || "WA",
+      data.postcode || appraisal.postcode,
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined;
 
   return {
     summary,
     description: descriptionLines.join("\n"),
-    location: location || undefined,
+    location,
     start: {
       dateTime: new Date(startIso).toISOString(),
       timeZone: "Australia/Perth",
