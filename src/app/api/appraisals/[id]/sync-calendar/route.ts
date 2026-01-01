@@ -91,17 +91,8 @@ export async function POST(
   try {
     event = googleEventFromAppraisal(appraisal);
   } catch (e: any) {
-    // 👇 return useful debug so we can see what the server is receiving
-    const debug = {
-      appraisalId: appraisal.id,
-      hasData: Boolean((appraisal as any)?.data),
-      followUpAt: (appraisal as any)?.data?.followUpAt ?? null,
-      followUpDate: (appraisal as any)?.data?.followUpDate ?? null,
-      topLevelAppointmentAt: (appraisal as any)?.appointment_at ?? null,
-    };
-
     return NextResponse.json(
-      { error: e?.message || "Invalid appraisal data", debug },
+      { error: e?.message || "Invalid appraisal data" },
       { status: 400 }
     );
   }
