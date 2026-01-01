@@ -6,7 +6,19 @@ import {
   refreshGoogleToken,
 } from "@/lib/google/calendar";
 
+export const dynamic = "force-dynamic";
+
 type Context = { params: Promise<{ eventId: string }> };
+
+type OpenHomeRow = { id: number; google_event_id: string | null };
+
+type GoogleAccountRow = {
+  calendar_id: string | null;
+  open_homes_calendar_id: string | null;
+  access_token: string;
+  refresh_token: string | null;
+  expiry: string;
+};
 
 // ───────────────── PATCH ─────────────────
 export async function PATCH(req: NextRequest, context: Context) {
@@ -41,7 +53,14 @@ export async function PATCH(req: NextRequest, context: Context) {
   }
 
   const startDate = new Date(startAt);
+  if (Number.isNaN(startDate.getTime())) {
+    return NextResponse.json({ error: "Invalid startAt" }, { status: 400 });
+  }
+
   const endDate = endAt ? new Date(endAt) : null;
+  if (endAt && endDate && Number.isNaN(endDate.getTime())) {
+    return NextResponse.json({ error: "Invalid endAt" }, { status: 400 });
+  }
 
   const { data, error } = await supabase
     .from("open_home_events")
@@ -53,7 +72,7 @@ export async function PATCH(req: NextRequest, context: Context) {
       notes: typeof notes === "string" ? notes.trim() || null : null,
     })
     .eq("id", eventId)
-    .eq("user_id", user.id) // ✅ defence in depth
+    .eq("user_id", user.id) // defence in depth
     .select()
     .maybeSingle();
 
@@ -89,7 +108,7 @@ export async function DELETE(_req: NextRequest, context: Context) {
     .select("id, google_event_id")
     .eq("id", eventId)
     .eq("user_id", user.id)
-    .maybeSingle<{ id: number; google_event_id: string | null }>();
+    .maybeSingle<OpenHomeRow>();
 
   if (loadErr) {
     console.error("Error loading open home before delete", loadErr);
@@ -104,9 +123,11 @@ export async function DELETE(_req: NextRequest, context: Context) {
   if (eventRow.google_event_id) {
     const { data: gacc, error: gerr } = await supabase
       .from("google_accounts")
-      .select("calendar_id, access_token, refresh_token, expiry")
+      .select(
+        "calendar_id, open_homes_calendar_id, access_token, refresh_token, expiry"
+      )
       .eq("user_id", user.id)
-      .single();
+      .single<GoogleAccountRow>();
 
     if (!gerr && gacc) {
       try {
@@ -124,9 +145,12 @@ export async function DELETE(_req: NextRequest, context: Context) {
           }
         );
 
+        const calendarId =
+          gacc.open_homes_calendar_id || gacc.calendar_id || "primary";
+
         await deleteGoogleCalendarEvent({
           accessToken,
-          calendarId: gacc.calendar_id || "primary",
+          calendarId,
           eventId: eventRow.google_event_id,
         });
       } catch (e) {
@@ -158,7 +182,7 @@ export async function DELETE(_req: NextRequest, context: Context) {
     .eq("id", eventId)
     .eq("user_id", user.id)
     .select("id")
-    .maybeSingle();
+    .maybeSingle<{ id: number }>();
 
   if (error) {
     console.error("Error deleting open home", error);

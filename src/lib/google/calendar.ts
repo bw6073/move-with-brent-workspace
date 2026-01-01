@@ -1,21 +1,31 @@
 // src/lib/google/calendar.ts
 import "server-only";
 
-type GoogleAccount = {
+export type GoogleAccount = {
   user_id: string;
-  calendar_id: string;
+  calendar_id: string | null;
+  open_homes_calendar_id?: string | null; // ✅ allow dedicated calendar
   access_token: string;
   refresh_token: string | null;
   expiry: string; // timestamptz ISO
 };
 
-type GoogleEventInput = {
+export type GoogleEventInput = {
   summary: string;
   description?: string;
   location?: string;
   start: { dateTime: string; timeZone?: string };
   end: { dateTime: string; timeZone?: string };
 };
+
+async function safeJsonParse(text: string) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
 async function googleFetch(
   url: string,
@@ -33,14 +43,16 @@ async function googleFetch(
   });
 
   const text = await res.text();
-  const json = text ? JSON.parse(text) : null;
+  const json = await safeJsonParse(text);
 
-  return { res, json };
+  return { res, json, text };
 }
 
 export async function refreshGoogleToken(
   account: GoogleAccount,
-  updateTokens: (patch: Partial<GoogleAccount>) => Promise<void>
+  updateTokens: (
+    patch: Pick<GoogleAccount, "access_token" | "expiry">
+  ) => Promise<void>
 ) {
   // Refresh only if expiry is within ~2 minutes
   const expiresAt = new Date(account.expiry).getTime();
@@ -65,11 +77,11 @@ export async function refreshGoogleToken(
     cache: "no-store",
   });
 
-  const data = await resp.json();
+  const data = await resp.json().catch(() => ({} as any));
 
   if (!resp.ok) {
     throw new Error(
-      data?.error_description || "Failed to refresh Google token"
+      data?.error_description || data?.error || "Failed to refresh Google token"
     );
   }
 
@@ -77,12 +89,7 @@ export async function refreshGoogleToken(
   const expiresIn = Number(data.expires_in ?? 3600);
   const newExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
 
-  await updateTokens({
-    access_token: newAccess,
-    expiry: newExpiry,
-    token_type: data.token_type ?? undefined,
-    scope: data.scope ?? undefined,
-  } as any);
+  await updateTokens({ access_token: newAccess, expiry: newExpiry });
 
   return newAccess;
 }
@@ -92,19 +99,20 @@ export async function createGoogleCalendarEvent(args: {
   calendarId: string;
   event: GoogleEventInput;
 }) {
-  const { res, json } = await googleFetch(
+  const { res, json, text } = await googleFetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
       args.calendarId
     )}/events`,
     args.accessToken,
-    {
-      method: "POST",
-      body: JSON.stringify(args.event),
-    }
+    { method: "POST", body: JSON.stringify(args.event) }
   );
 
   if (!res.ok) {
-    throw new Error(json?.error?.message || "Failed to create calendar event");
+    const msg =
+      (json as any)?.error?.message ||
+      text ||
+      "Failed to create calendar event";
+    throw new Error(msg);
   }
 
   return json as { id: string; htmlLink?: string };
@@ -116,19 +124,20 @@ export async function updateGoogleCalendarEvent(args: {
   eventId: string;
   event: GoogleEventInput;
 }) {
-  const { res, json } = await googleFetch(
+  const { res, json, text } = await googleFetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
       args.calendarId
     )}/events/${encodeURIComponent(args.eventId)}`,
     args.accessToken,
-    {
-      method: "PUT",
-      body: JSON.stringify(args.event),
-    }
+    { method: "PUT", body: JSON.stringify(args.event) }
   );
 
   if (!res.ok) {
-    throw new Error(json?.error?.message || "Failed to update calendar event");
+    const msg =
+      (json as any)?.error?.message ||
+      text ||
+      "Failed to update calendar event";
+    throw new Error(msg);
   }
 
   return json as { id: string; htmlLink?: string };
@@ -139,7 +148,7 @@ export async function deleteGoogleCalendarEvent(args: {
   calendarId: string;
   eventId: string;
 }) {
-  const { res, json } = await googleFetch(
+  const { res, json, text } = await googleFetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
       args.calendarId
     )}/events/${encodeURIComponent(args.eventId)}`,
@@ -147,8 +156,13 @@ export async function deleteGoogleCalendarEvent(args: {
     { method: "DELETE" }
   );
 
+  // 410 = already gone
   if (!res.ok && res.status !== 410) {
-    throw new Error(json?.error?.message || "Failed to delete calendar event");
+    const msg =
+      (json as any)?.error?.message ||
+      text ||
+      "Failed to delete calendar event";
+    throw new Error(msg);
   }
 
   return true;
