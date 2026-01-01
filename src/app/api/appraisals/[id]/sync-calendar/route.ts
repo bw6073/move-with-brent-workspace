@@ -10,17 +10,8 @@ import { googleEventFromAppraisal } from "@/lib/appraisals/googleEventFromApprai
 
 export const dynamic = "force-dynamic";
 
-type GoogleAccountRow = {
-  user_id: string;
-  calendar_id: string | null;
-  appraisals_calendar_id: string | null;
-  access_token: string;
-  refresh_token: string | null;
-  expiry: string;
-};
-
-function parseId(raw: string) {
-  const n = Number(raw);
+function parseId(id: string) {
+  const n = Number(id);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -28,8 +19,8 @@ export async function POST(
   _req: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const { id: rawId } = await ctx.params;
-  const appraisalId = parseId(rawId);
+  const { id } = await ctx.params;
+  const appraisalId = parseId(id);
 
   if (!appraisalId) {
     return NextResponse.json(
@@ -39,7 +30,6 @@ export async function POST(
   }
 
   const supabase = await createClient();
-
   const {
     data: { user },
     error: authError,
@@ -49,52 +39,38 @@ export async function POST(
     return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
   }
 
-  // 1) Load appraisal (scoped)
-  // NOTE: include data (JSON) because most appraisal fields live there.
-  const { data: appraisalRow, error: appraisalErr } = await supabase
+  // Load appraisal (scoped)
+  const { data: appraisal, error: appraisalErr } = await supabase
     .from("appraisals")
-    .select("id, user_id, google_event_id, data")
+    .select("*")
     .eq("id", appraisalId)
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (appraisalErr) {
-    console.error("[sync appraisal] load error", appraisalErr);
+  if (appraisalErr || !appraisal) {
     return NextResponse.json(
-      { error: "Failed to load appraisal" },
-      { status: 500 }
+      { error: appraisalErr?.message || "Appraisal not found" },
+      { status: 404 }
     );
   }
 
-  if (!appraisalRow) {
-    return NextResponse.json({ error: "Appraisal not found" }, { status: 404 });
-  }
-
-  // 2) Load google account connection
+  // Load google account
   const { data: gacc, error: gerr } = await supabase
     .from("google_accounts")
     .select(
       "user_id, calendar_id, appraisals_calendar_id, access_token, refresh_token, expiry"
     )
     .eq("user_id", user.id)
-    .maybeSingle<GoogleAccountRow>();
+    .maybeSingle();
 
-  if (gerr) {
-    console.error("[sync appraisal] google_accounts error", gerr);
-    return NextResponse.json(
-      { error: "Failed to load Google connection" },
-      { status: 500 }
-    );
-  }
-
-  if (!gacc) {
+  if (gerr || !gacc) {
     return NextResponse.json(
       { error: "Google Calendar not connected" },
       { status: 400 }
     );
   }
 
-  // 3) Refresh token if needed
+  // Refresh token if needed
   const accessToken = await refreshGoogleToken(gacc as any, async (patch) => {
     const access_token = (patch as any)?.access_token as string | undefined;
     const expiry = (patch as any)?.expiry as string | undefined;
@@ -110,40 +86,37 @@ export async function POST(
       .eq("user_id", user.id);
   });
 
-  // 4) Flatten appraisal fields for the mapper:
-  // - keep real ids from DB
-  // - overlay JSON `data` so googleEventFromAppraisal can find appointment_at etc.
-  const flattenedAppraisal = {
-    id: appraisalRow.id,
-    user_id: appraisalRow.user_id,
-    google_event_id: appraisalRow.google_event_id ?? null,
-    ...(typeof appraisalRow.data === "object" && appraisalRow.data
-      ? appraisalRow.data
-      : {}),
-  };
-
-  // 5) Build event
+  // Build event
   let event: any;
   try {
-    event = googleEventFromAppraisal(flattenedAppraisal);
+    event = googleEventFromAppraisal(appraisal);
   } catch (e: any) {
+    // 👇 return useful debug so we can see what the server is receiving
+    const debug = {
+      appraisalId: appraisal.id,
+      hasData: Boolean((appraisal as any)?.data),
+      followUpAt: (appraisal as any)?.data?.followUpAt ?? null,
+      followUpDate: (appraisal as any)?.data?.followUpDate ?? null,
+      topLevelAppointmentAt: (appraisal as any)?.appointment_at ?? null,
+    };
+
     return NextResponse.json(
-      { error: e?.message || "Invalid appraisal data" },
+      { error: e?.message || "Invalid appraisal data", debug },
       { status: 400 }
     );
   }
 
-  // 6) Choose target calendar
   const calendarId =
-    gacc.appraisals_calendar_id || gacc.calendar_id || "primary";
+    (gacc as any).appraisals_calendar_id ||
+    (gacc as any).calendar_id ||
+    "primary";
 
-  // 7) Create or update
   try {
-    if (appraisalRow.google_event_id) {
+    if ((appraisal as any).google_event_id) {
       const updated = await updateGoogleCalendarEvent({
         accessToken,
         calendarId,
-        eventId: appraisalRow.google_event_id,
+        eventId: (appraisal as any).google_event_id,
         event,
       });
 
@@ -159,11 +132,10 @@ export async function POST(
     const { error: uerr } = await supabase
       .from("appraisals")
       .update({ google_event_id: created.id })
-      .eq("id", appraisalRow.id)
+      .eq("id", appraisalId)
       .eq("user_id", user.id);
 
     if (uerr) {
-      console.error("[sync appraisal] failed saving google_event_id", uerr);
       return NextResponse.json(
         { error: "Event created but failed to save google_event_id" },
         { status: 500 }

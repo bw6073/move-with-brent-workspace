@@ -84,29 +84,29 @@ export default function Step8PresentationMarketing({
   }, [form]);
 
   const handleSync = async () => {
-    if (!googleConnected || syncing) return;
+    if (!googleConnected) return;
 
     setSyncing(true);
     setSyncMsg(null);
 
     try {
-      // ✅ save first so followUpAt is in the DB for the server-side sync route
-      await onSaveDraft();
-
       const res = await fetch(`/api/appraisals/${appraisalId}/sync-calendar`, {
         method: "POST",
       });
 
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "Sync failed");
+
+      if (!res.ok) {
+        console.error("[sync-calendar] failed", res.status, json);
+        throw new Error(json?.error || `Sync failed (${res.status})`);
+      }
 
       setSyncMsg("Synced to Google ✅");
-      clearMsgSoon();
     } catch (e: any) {
       setSyncMsg(e?.message || "Failed to sync.");
-      clearMsgSoon();
     } finally {
       setSyncing(false);
+      window.setTimeout(() => setSyncMsg(null), 3500);
     }
   };
 
