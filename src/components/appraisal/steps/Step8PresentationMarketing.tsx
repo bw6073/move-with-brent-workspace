@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { FormState } from "../config/types";
 import { MARKETING_CHANNELS } from "../config/constants";
 
@@ -62,12 +62,19 @@ export default function Step8PresentationMarketing({
 }: Step8PresentationMarketingProps) {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
   const timeoutRef = useRef<number | null>(null);
 
   const clearMsgSoon = () => {
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
     timeoutRef.current = window.setTimeout(() => setSyncMsg(null), 3500);
   };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   // Back-compat: if old followUpDate exists but followUpAt isn't set, use 09:00 local.
   const followUpAtIso = useMemo(() => {
@@ -84,12 +91,20 @@ export default function Step8PresentationMarketing({
   }, [form]);
 
   const handleSync = async () => {
-    if (!googleConnected) return;
+    if (!googleConnected || syncing) return;
+    if (!appraisalId || appraisalId <= 0) {
+      setSyncMsg("Save this appraisal first before syncing.");
+      clearMsgSoon();
+      return;
+    }
 
     setSyncing(true);
     setSyncMsg(null);
 
     try {
+      // ✅ CRITICAL: persist followUpAt (and anything else) before sync
+      await onSaveDraft();
+
       const res = await fetch(`/api/appraisals/${appraisalId}/sync-calendar`, {
         method: "POST",
       });
@@ -102,11 +117,12 @@ export default function Step8PresentationMarketing({
       }
 
       setSyncMsg("Synced to Google ✅");
+      clearMsgSoon();
     } catch (e: any) {
       setSyncMsg(e?.message || "Failed to sync.");
+      clearMsgSoon();
     } finally {
       setSyncing(false);
-      window.setTimeout(() => setSyncMsg(null), 3500);
     }
   };
 
@@ -247,7 +263,7 @@ export default function Step8PresentationMarketing({
               disabled={!googleConnected || syncing}
               className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
             >
-              {syncing ? "Syncing…" : "Sync to Google"}
+              {syncing ? "Syncing…" : "Save + Sync to Google"}
             </button>
 
             {syncMsg && <div className="text-xs text-slate-600">{syncMsg}</div>}
