@@ -234,7 +234,7 @@ export function SettingsClient({
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">Calendar</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Sync home opens to your Google Calendar.
+          Sync your Google Calendar.
         </p>
 
         <div className="mt-4 flex items-center justify-between gap-3">
