@@ -3,87 +3,103 @@ import "server-only";
 
 type AppraisalRow = Record<string, any>;
 
-function pickDateTime(a: AppraisalRow): string | null {
-  const data = (a?.data ?? {}) as Record<string, any>;
-
-  // ✅ Your actual source (Step 8)
-  return (
-    data.followUpAt ||
-    a.followUpAt ||
-    // (optional legacy support)
-    (data.followUpDate ? `${data.followUpDate}T09:00:00.000+08:00` : null) ||
-    // other common names (top-level or nested)
-    data.appointment_at ||
+function pickAppointmentIso(a: AppraisalRow): string | null {
+  // 1) Prefer explicit DB columns if you ever add them later
+  const top =
     a.appointment_at ||
-    data.appraisal_at ||
     a.appraisal_at ||
-    data.inspection_at ||
     a.inspection_at ||
-    data.meeting_at ||
     a.meeting_at ||
-    data.appointment_start_at ||
     a.appointment_start_at ||
-    data.start_at ||
-    a.start_at ||
-    null
-  );
+    a.start_at;
+
+  if (typeof top === "string" && top) return top;
+
+  // 2) Current reality: stored in JSON column "data"
+  const followUpAt = a?.data?.followUpAt;
+  if (typeof followUpAt === "string" && followUpAt) return followUpAt;
+
+  // Optional backwards compat: old "followUpDate" (date only) in JSON
+  const followUpDate = a?.data?.followUpDate;
+  if (typeof followUpDate === "string" && followUpDate) {
+    // Default to 09:00 Perth time for date-only values
+    const d = new Date(`${followUpDate}T09:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  return null;
 }
 
 export function googleEventFromAppraisal(appraisal: AppraisalRow) {
-  const startIso = pickDateTime(appraisal);
+  const startIso = pickAppointmentIso(appraisal);
+
   if (!startIso) {
     throw new Error(
       "No appointment datetime found on appraisal. Set Follow-up date & time (Step 8) or map the correct field in googleEventFromAppraisal.ts"
     );
   }
 
-  const data = (appraisal?.data ?? {}) as Record<string, any>;
-
   const start = new Date(startIso);
+  if (Number.isNaN(start.getTime())) {
+    throw new Error("Appointment datetime is invalid.");
+  }
+
+  // Default to 45 minutes if you don’t store an end time
   const endIso =
-    data.followUpEndAt ||
-    appraisal.followUpEndAt ||
-    data.appointment_end_at ||
     appraisal.appointment_end_at ||
-    data.end_at ||
     appraisal.end_at ||
     new Date(start.getTime() + 45 * 60 * 1000).toISOString();
 
+  const addr =
+    appraisal.street_address ||
+    appraisal.address ||
+    appraisal.property_address ||
+    appraisal?.data?.streetAddress ||
+    "";
+
+  const suburb = appraisal.suburb || appraisal?.data?.suburb || "";
+
   const summary =
-    [
-      "Appraisal",
-      data.streetAddress || appraisal.street_address || appraisal.address,
-      data.suburb || appraisal.suburb,
-    ]
-      .filter(Boolean)
-      .join(" – ") || "Appraisal";
+    ["Appraisal", addr, suburb].filter(Boolean).join(" – ") || "Appraisal";
+
+  const owner =
+    appraisal.vendor_name ||
+    appraisal?.data?.ownerNames ||
+    appraisal?.data?.vendorName ||
+    null;
+
+  const phone =
+    appraisal.phone ||
+    appraisal?.data?.ownerPhonePrimary ||
+    appraisal?.data?.phone ||
+    null;
+
+  const email = appraisal.email || appraisal?.data?.ownerEmail || null;
+
+  const notes =
+    appraisal.notes ||
+    appraisal?.data?.followUpActions ||
+    appraisal?.data?.notes ||
+    null;
 
   const descriptionLines = [
-    data.ownerNames ? `Owner: ${data.ownerNames}` : null,
-    data.ownerPhonePrimary ? `Phone: ${data.ownerPhonePrimary}` : null,
-    data.ownerEmail ? `Email: ${data.ownerEmail}` : null,
-    data.followUpActions ? `Notes: ${data.followUpActions}` : null,
+    owner ? `Owner: ${owner}` : null,
+    phone ? `Phone: ${phone}` : null,
+    email ? `Email: ${email}` : null,
+    notes ? `Notes: ${notes}` : null,
     appraisal.id ? `CRM Appraisal ID: ${appraisal.id}` : null,
   ].filter(Boolean);
 
-  const location =
-    [
-      data.streetAddress || appraisal.street_address || appraisal.address,
-      data.suburb || appraisal.suburb,
-      data.state || appraisal.state || "WA",
-      data.postcode || appraisal.postcode,
-    ]
-      .filter(Boolean)
-      .join(" ") || undefined;
+  const state = appraisal.state || appraisal?.data?.state || "WA";
+  const postcode = appraisal.postcode || appraisal?.data?.postcode || "";
+
+  const location = [addr, suburb, state, postcode].filter(Boolean).join(" ");
 
   return {
     summary,
     description: descriptionLines.join("\n"),
-    location,
-    start: {
-      dateTime: new Date(startIso).toISOString(),
-      timeZone: "Australia/Perth",
-    },
+    location: location || undefined,
+    start: { dateTime: start.toISOString(), timeZone: "Australia/Perth" },
     end: {
       dateTime: new Date(endIso).toISOString(),
       timeZone: "Australia/Perth",
