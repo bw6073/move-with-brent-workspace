@@ -25,8 +25,20 @@ export async function POST() {
     return NextResponse.json({ error: "Disconnect failed" }, { status: 500 });
   }
 
-  // Optional: clear google_event_id on open homes for this user
-  // await supabase.from("open_home_events").update({ google_event_id: null }).eq("user_id", user.id);
+  // ✅ Cleanup: prevent stale google_event_id references
+  const { error: clearErr } = await supabase
+    .from("open_home_events")
+    .update({ google_event_id: null })
+    .eq("user_id", user.id);
+
+  if (clearErr) {
+    console.error("Error clearing google_event_id on open homes", clearErr);
+    // Not fatal — account is disconnected — but worth surfacing
+    return NextResponse.json(
+      { error: "Disconnected, but failed to clear open home sync state" },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }
