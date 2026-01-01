@@ -11,13 +11,25 @@ type Initial = {
   phone: string;
 };
 
+type GoogleCal = {
+  id: string;
+  summary: string;
+  primary: boolean;
+};
+
+type Props = {
+  initial: Initial;
+  googleConnected: boolean;
+  initialOpenHomesCalendarId: string | null;
+  initialAppraisalsCalendarId: string | null;
+};
+
 export function SettingsClient({
   initial,
   googleConnected,
-}: {
-  initial: Initial;
-  googleConnected: boolean;
-}) {
+  initialOpenHomesCalendarId,
+  initialAppraisalsCalendarId,
+}: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
@@ -35,6 +47,20 @@ export function SettingsClient({
   const [message, setMessage] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Calendar picker state
+  const [calendars, setCalendars] = useState<GoogleCal[]>([]);
+  const [loadingCals, setLoadingCals] = useState(false);
+  const [savingCals, setSavingCals] = useState(false);
+
+  const [openHomesCalId, setOpenHomesCalId] = useState<string>(
+    initialOpenHomesCalendarId ?? "primary"
+  );
+  const [appraisalsCalId, setAppraisalsCalId] = useState<string>(
+    initialAppraisalsCalendarId ?? "primary"
+  );
+
+  const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
+
   const clearNotices = () => {
     setMessage(null);
     setErrorMsg(null);
@@ -45,8 +71,10 @@ export function SettingsClient({
     router.refresh();
   };
 
-  const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
+  const safeText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const normaliseEmail = (v: unknown) => safeText(v).toLowerCase();
 
+  // ───────────────── Google actions ─────────────────
   const disconnectGoogle = async () => {
     const ok = window.confirm(
       "Disconnect Google Calendar? Home opens will stop syncing until you reconnect."
@@ -64,6 +92,11 @@ export function SettingsClient({
         throw new Error(json?.error || "Disconnect failed");
       }
 
+      // local UI reset (optional)
+      setCalendars([]);
+      setOpenHomesCalId("primary");
+      setAppraisalsCalId("primary");
+
       await refreshEverywhere();
       setMessage("Google Calendar disconnected.");
     } catch (err: any) {
@@ -73,9 +106,59 @@ export function SettingsClient({
     }
   };
 
-  const safeText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-  const normaliseEmail = (v: unknown) => safeText(v).toLowerCase();
+  const loadCalendars = async () => {
+    clearNotices();
+    setLoadingCals(true);
 
+    try {
+      const res = await fetch("/api/google/calendars", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to load calendars");
+      }
+
+      const list: GoogleCal[] = Array.isArray(json.calendars)
+        ? json.calendars
+        : [];
+
+      setCalendars(list);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Failed to load Google calendars.");
+    } finally {
+      setLoadingCals(false);
+    }
+  };
+
+  const saveCalendarPrefs = async () => {
+    clearNotices();
+    setSavingCals(true);
+
+    try {
+      const res = await fetch("/api/google/calendar-preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          openHomesCalendarId: openHomesCalId,
+          appraisalsCalendarId: appraisalsCalId,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to save calendar preferences");
+      }
+
+      await refreshEverywhere();
+      setMessage("Calendar preferences saved.");
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Failed to save calendar preferences.");
+    } finally {
+      setSavingCals(false);
+    }
+  };
+
+  // ───────────────── Profile / email / password ─────────────────
   const saveProfile = async () => {
     clearNotices();
     setSavingProfile(true);
@@ -118,10 +201,7 @@ export function SettingsClient({
         return;
       }
 
-      const { error } = await supabase.auth.updateUser({
-        email: nextEmail,
-      });
-
+      const { error } = await supabase.auth.updateUser({ email: nextEmail });
       if (error) throw error;
 
       await refreshEverywhere();
@@ -150,7 +230,6 @@ export function SettingsClient({
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
-
       if (error) throw error;
 
       setNewPassword("");
@@ -262,7 +341,8 @@ export function SettingsClient({
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">Calendar</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Sync your Google Calendar.
+          Connect Google Calendar and choose where open homes and appraisals are
+          saved.
         </p>
 
         <div className="mt-4 flex items-center justify-between gap-3">
@@ -295,6 +375,80 @@ export function SettingsClient({
             )}
           </div>
         </div>
+
+        {googleConnected && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-slate-700">
+                Pick calendars (optional). Defaults to your primary calendar.
+              </div>
+              <button
+                type="button"
+                onClick={loadCalendars}
+                disabled={loadingCals}
+                className="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
+              >
+                {loadingCals ? "Loading…" : "Load calendars"}
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-medium text-slate-700">
+                  Open homes calendar
+                </label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                  value={openHomesCalId}
+                  onChange={(e) => setOpenHomesCalId(e.target.value)}
+                >
+                  <option value="primary">Primary calendar</option>
+                  {calendars.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.summary}
+                      {c.primary ? " (Primary)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700">
+                  Appraisals calendar
+                </label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                  value={appraisalsCalId}
+                  onChange={(e) => setAppraisalsCalId(e.target.value)}
+                >
+                  <option value="primary">Primary calendar</option>
+                  {calendars.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.summary}
+                      {c.primary ? " (Primary)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={saveCalendarPrefs}
+                disabled={savingCals}
+                className="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {savingCals ? "Saving…" : "Save calendar preferences"}
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-500">
+              Tip: Create calendars in Google like “Open homes” and
+              “Appraisals”, then select them here.
+            </p>
+          </div>
+        )}
 
         <p className="mt-3 text-xs text-slate-500">
           If you change Google accounts, use “Reconnect”.

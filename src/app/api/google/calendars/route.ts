@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const supabase = await createClient();
+
   const {
     data: { user },
     error: authError,
@@ -29,16 +30,21 @@ export async function GET() {
   }
 
   const accessToken = await refreshGoogleToken(gacc as any, async (patch) => {
+    const access_token = (patch as any).access_token as string | undefined;
+    const expiry = (patch as any).expiry as string | undefined;
+    if (!access_token || !expiry) return;
+
     await supabase
       .from("google_accounts")
       .update({
-        access_token: patch.access_token,
-        expiry: patch.expiry,
+        access_token,
+        expiry,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", user.id);
   });
 
+  // Only calendars we can write to
   const resp = await fetch(
     "https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=writer",
     {
@@ -47,7 +53,8 @@ export async function GET() {
     }
   );
 
-  const data = await resp.json();
+  const data = await resp.json().catch(() => ({}));
+
   if (!resp.ok) {
     return NextResponse.json(
       { error: data?.error?.message || "Failed to load calendars" },
@@ -56,8 +63,8 @@ export async function GET() {
   }
 
   const calendars = (data.items ?? []).map((c: any) => ({
-    id: c.id as string,
-    summary: c.summary as string,
+    id: String(c.id),
+    summary: String(c.summary ?? "Untitled calendar"),
     primary: Boolean(c.primary),
   }));
 

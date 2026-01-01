@@ -5,6 +5,12 @@ import { SettingsClient } from "./SettingsClient";
 
 export const dynamic = "force-dynamic";
 
+type GoogleAccountRow = {
+  user_id: string;
+  open_homes_calendar_id: string | null;
+  appraisals_calendar_id: string | null;
+};
+
 export default async function SettingsPage() {
   const supabase = await createClient();
 
@@ -20,14 +26,13 @@ export default async function SettingsPage() {
     phone: (user.user_metadata?.phone as string | undefined) ?? "",
   };
 
-  // ✅ Check Google Calendar connection
   const { data: gacc } = await supabase
     .from("google_accounts")
-    .select("user_id, calendar_id, expiry")
+    .select("user_id, open_homes_calendar_id, appraisals_calendar_id")
     .eq("user_id", user.id)
-    .maybeSingle();
+    .maybeSingle<GoogleAccountRow>();
 
-  const googleConnected = !!gacc;
+  const googleConnected = Boolean(gacc?.user_id);
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-6">
@@ -36,7 +41,12 @@ export default async function SettingsPage() {
         <p className="text-sm text-slate-500">Update your account details.</p>
       </header>
 
-      <SettingsClient initial={initial} googleConnected={googleConnected} />
+      <SettingsClient
+        initial={initial}
+        googleConnected={googleConnected}
+        initialOpenHomesCalendarId={gacc?.open_homes_calendar_id ?? null}
+        initialAppraisalsCalendarId={gacc?.appraisals_calendar_id ?? null}
+      />
     </div>
   );
 }
