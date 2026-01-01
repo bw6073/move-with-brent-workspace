@@ -1,3 +1,4 @@
+// src/app/(app)/settings/SettingsClient.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -10,7 +11,13 @@ type Initial = {
   phone: string;
 };
 
-export function SettingsClient({ initial }: { initial: Initial }) {
+export function SettingsClient({
+  initial,
+  googleConnected,
+}: {
+  initial: Initial;
+  googleConnected: boolean;
+}) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
@@ -37,7 +44,6 @@ export function SettingsClient({ initial }: { initial: Initial }) {
   const normaliseEmail = (v: unknown) => safeText(v).toLowerCase();
 
   const refreshEverywhere = async () => {
-    // Ensures JWT claims + server components pick up fresh auth metadata
     await supabase.auth.refreshSession().catch(() => {});
     router.refresh();
   };
@@ -59,13 +65,11 @@ export function SettingsClient({ initial }: { initial: Initial }) {
 
       if (error) throw error;
 
-      // Sync local state from returned user (source of truth)
       const meta = data.user?.user_metadata ?? {};
       setDisplayName((meta.display_name as string | undefined) ?? "");
       setPhone((meta.phone as string | undefined) ?? "");
 
       await refreshEverywhere();
-
       setMessage("Profile updated.");
     } catch (err: any) {
       setErrorMsg(err?.message || "Failed to update profile.");
@@ -93,7 +97,6 @@ export function SettingsClient({ initial }: { initial: Initial }) {
       if (error) throw error;
 
       await refreshEverywhere();
-
       setMessage("Email update requested. Check your inbox to confirm.");
     } catch (err: any) {
       setErrorMsg(err?.message || "Failed to update email.");
@@ -126,7 +129,6 @@ export function SettingsClient({ initial }: { initial: Initial }) {
       setConfirmPassword("");
 
       await refreshEverywhere();
-
       setMessage("Password updated.");
     } catch (err: any) {
       setErrorMsg(err?.message || "Failed to update password.");
@@ -226,6 +228,36 @@ export function SettingsClient({ initial }: { initial: Initial }) {
             {savingEmail ? "Saving…" : "Update email"}
           </button>
         </div>
+      </section>
+
+      {/* Google Calendar */}
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-semibold text-slate-900">Calendar</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Sync home opens to your Google Calendar.
+        </p>
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="text-sm text-slate-700">
+            Status:{" "}
+            {googleConnected ? (
+              <span className="font-medium text-emerald-700">Connected ✅</span>
+            ) : (
+              <span className="font-medium text-slate-700">Not connected</span>
+            )}
+          </div>
+
+          <a
+            href="/api/google/oauth/start"
+            className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+          >
+            {googleConnected ? "Reconnect" : "Connect Google Calendar"}
+          </a>
+        </div>
+
+        <p className="mt-3 text-xs text-slate-500">
+          If you change Google accounts, use “Reconnect”.
+        </p>
       </section>
 
       {/* Password */}

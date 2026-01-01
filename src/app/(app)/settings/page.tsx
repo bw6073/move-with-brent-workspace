@@ -20,6 +20,15 @@ export default async function SettingsPage() {
     phone: (user.user_metadata?.phone as string | undefined) ?? "",
   };
 
+  // ✅ Check Google Calendar connection
+  const { data: gacc } = await supabase
+    .from("google_accounts")
+    .select("user_id, calendar_id, expiry")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const googleConnected = !!gacc;
+
   return (
     <div className="mx-auto max-w-3xl px-6 py-6">
       <header className="mb-6">
@@ -27,7 +36,7 @@ export default async function SettingsPage() {
         <p className="text-sm text-slate-500">Update your account details.</p>
       </header>
 
-      <SettingsClient initial={initial} />
+      <SettingsClient initial={initial} googleConnected={googleConnected} />
     </div>
   );
 }
