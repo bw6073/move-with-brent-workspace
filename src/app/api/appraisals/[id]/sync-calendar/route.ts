@@ -42,7 +42,9 @@ export async function POST(
   // Load google account
   const { data: gacc, error: gerr } = await supabase
     .from("google_accounts")
-    .select("user_id, calendar_id, access_token, refresh_token, expiry")
+    .select(
+      "user_id, calendar_id, appraisals_calendar_id, access_token, refresh_token, expiry"
+    )
     .eq("user_id", user.id)
     .single();
 
@@ -74,7 +76,10 @@ export async function POST(
   }
 
   // Create or update event
-  const calendarId = (gacc as any).calendar_id || "primary";
+  const calendarId =
+    (gacc as any).appraisals_calendar_id ||
+    (gacc as any).calendar_id ||
+    "primary";
 
   try {
     if (appraisal.google_event_id) {

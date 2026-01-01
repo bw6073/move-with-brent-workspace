@@ -30,6 +30,7 @@ type OpenHomeRow = {
 type GoogleAccountRow = {
   user_id: string;
   calendar_id: string;
+  open_homes_calendar_id: string | null;
   access_token: string;
   refresh_token: string | null;
   expiry: string;
@@ -86,7 +87,9 @@ export async function POST(
   // 2) Load Google connection
   const { data: gacc, error: gerr } = await supabase
     .from("google_accounts")
-    .select("user_id, calendar_id, access_token, refresh_token, expiry")
+    .select(
+      "user_id, calendar_id, open_homes_calendar_id, access_token, refresh_token, expiry"
+    )
     .eq("user_id", user.id)
     .single<GoogleAccountRow>();
 
@@ -125,7 +128,8 @@ export async function POST(
     );
   }
 
-  const calendarId = gacc.calendar_id || "primary";
+  const calendarId =
+    gacc.open_homes_calendar_id || gacc.calendar_id || "primary";
 
   // 5) Create or update
   try {
