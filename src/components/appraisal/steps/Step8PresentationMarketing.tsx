@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo, useState } from "react";
 import type { FormState } from "../config/types";
 import { MARKETING_CHANNELS } from "../config/constants";
 
@@ -8,13 +8,94 @@ type Step8PresentationMarketingProps = {
   form: FormState;
   updateField: <K extends keyof FormState>(key: K, value: FormState[K]) => void;
   toggleArrayValue: (key: keyof FormState, value: string) => void;
+
+  // 👇 add these from the parent (AppraisalForm) so the card can sync
+  appraisalId: number;
+  googleConnected: boolean;
 };
+
+function toDateTimeLocal(v: unknown) {
+  const iso = typeof v === "string" ? v : "";
+  if (!iso) return "";
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`;
+}
+
+function fromDateTimeLocal(v: string) {
+  // v = "YYYY-MM-DDTHH:mm"
+  if (!v) return null;
+
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!m) return null;
+
+  const [, yy, mm, dd, hh, mi] = m;
+  const d = new Date(
+    Number(yy),
+    Number(mm) - 1,
+    Number(dd),
+    Number(hh),
+    Number(mi),
+    0,
+    0
+  );
+
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
 
 export default function Step8PresentationMarketing({
   form,
   updateField,
   toggleArrayValue,
+  appraisalId,
+  googleConnected,
 }: Step8PresentationMarketingProps) {
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  // Back-compat: if old followUpDate exists but followUpAt isn't set, use 09:00 local.
+  const followUpAtIso = useMemo(() => {
+    const anyForm = form as any;
+    const followUpAt = anyForm.followUpAt as string | null | undefined;
+    if (followUpAt) return followUpAt;
+
+    const followUpDate = anyForm.followUpDate as string | null | undefined;
+    if (!followUpDate) return null;
+
+    const d = new Date(`${followUpDate}T09:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }, [form]);
+
+  const handleSync = async () => {
+    if (!googleConnected) return;
+
+    setSyncing(true);
+    setSyncMsg(null);
+
+    try {
+      const res = await fetch(`/api/appraisals/${appraisalId}/sync-calendar`, {
+        method: "POST",
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Sync failed");
+
+      setSyncMsg("Synced to Google ✅");
+    } catch (e: any) {
+      setSyncMsg(e?.message || "Failed to sync.");
+    } finally {
+      setSyncing(false);
+      // Optional: auto-clear message after a moment
+      window.setTimeout(() => setSyncMsg(null), 3500);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* PRESENTATION OVERVIEW */}
@@ -36,7 +117,9 @@ export default function Step8PresentationMarketing({
               min={1}
               max={10}
               value={form.presentationScore}
-              onChange={(e) => updateField("presentationScore", e.target.value)}
+              onChange={(e) =>
+                updateField("presentationScore", e.target.value as any)
+              }
               className="mt-1 w-full"
             />
             <div className="mt-1 text-xs text-slate-600">
@@ -52,7 +135,7 @@ export default function Step8PresentationMarketing({
               type="text"
               value={form.presentationSummary}
               onChange={(e) =>
-                updateField("presentationSummary", e.target.value)
+                updateField("presentationSummary", e.target.value as any)
               }
               placeholder="Neat but dated – great bones, needs cosmetic refresh."
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -73,7 +156,9 @@ export default function Step8PresentationMarketing({
           </label>
           <textarea
             value={form.targetBuyerProfile}
-            onChange={(e) => updateField("targetBuyerProfile", e.target.value)}
+            onChange={(e) =>
+              updateField("targetBuyerProfile", e.target.value as any)
+            }
             rows={3}
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
@@ -85,7 +170,9 @@ export default function Step8PresentationMarketing({
           </label>
           <textarea
             value={form.headlineIdeas}
-            onChange={(e) => updateField("headlineIdeas", e.target.value)}
+            onChange={(e) =>
+              updateField("headlineIdeas", e.target.value as any)
+            }
             rows={3}
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
@@ -115,9 +202,43 @@ export default function Step8PresentationMarketing({
         </div>
       </section>
 
-      {/* FOLLOW-UP */}
+      {/* FOLLOW-UP + GOOGLE SYNC */}
       <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-slate-900">Follow-up</h3>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Follow-up</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Set a follow-up time and optionally sync the appointment to
+              Google.
+            </p>
+          </div>
+
+          <div className="flex flex-col items-end gap-2">
+            <div className="text-xs text-slate-600">
+              Google:{" "}
+              {googleConnected ? (
+                <span className="font-medium text-emerald-700">
+                  Connected ✅
+                </span>
+              ) : (
+                <span className="font-medium text-slate-700">
+                  Not connected
+                </span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSync}
+              disabled={!googleConnected || syncing}
+              className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
+            >
+              {syncing ? "Syncing…" : "Sync to Google"}
+            </button>
+
+            {syncMsg && <div className="text-xs text-slate-600">{syncMsg}</div>}
+          </div>
+        </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
@@ -126,7 +247,9 @@ export default function Step8PresentationMarketing({
             </label>
             <textarea
               value={form.followUpActions}
-              onChange={(e) => updateField("followUpActions", e.target.value)}
+              onChange={(e) =>
+                updateField("followUpActions", e.target.value as any)
+              }
               rows={4}
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
@@ -134,16 +257,21 @@ export default function Step8PresentationMarketing({
 
           <div>
             <label className="block text-sm font-medium text-slate-700">
-              Follow-up date
+              Follow-up date & time
             </label>
             <input
-              type="date"
-              value={form.followUpDate}
-              onChange={(e) => updateField("followUpDate", e.target.value)}
+              type="datetime-local"
+              value={toDateTimeLocal(followUpAtIso)}
+              onChange={(e) =>
+                updateField(
+                  "followUpAt" as any,
+                  fromDateTimeLocal(e.target.value) as any
+                )
+              }
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
             <p className="mt-1 text-xs text-slate-500">
-              Use this later to drive reminders in a dashboard.
+              This can drive reminders and the Google calendar event time.
             </p>
           </div>
         </div>

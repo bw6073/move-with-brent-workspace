@@ -1,7 +1,7 @@
 // src/app/(app)/appraisals/[id]/edit/EditAppraisalClient.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import AppraisalForm from "@/components/appraisal/AppraisalForm";
 import type { FormState } from "@/components/appraisal/config/types";
 import { EMPTY_FORM } from "@/components/appraisal/config/types";
@@ -10,36 +10,46 @@ type EditAppraisalClientProps = {
   appraisalId: string; // from the URL segment
 };
 
+type AppraisalApiRow = {
+  id: number | string;
+  user_id?: string;
+  data?: Partial<FormState> | null;
+  google_event_id?: string | null;
+};
+
 export default function EditAppraisalClient({
   appraisalId,
 }: EditAppraisalClientProps) {
   const [initialForm, setInitialForm] = useState<FormState | null>(null);
   const [pk, setPk] = useState<number | null>(null); // DB primary key
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!appraisalId) {
-      setError("Invalid appraisal ID.");
-      setLoading(false);
-      return;
-    }
+  const loadAll = useMemo(() => {
+    return async () => {
+      if (!appraisalId || appraisalId === "undefined") {
+        setError("Invalid appraisal ID.");
+        setLoading(false);
+        return;
+      }
 
-    const load = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const res = await fetch(`/api/appraisals/${appraisalId}`);
-        const json = await res.json();
+        const res = await fetch(`/api/appraisals/${appraisalId}`, {
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
 
         if (!res.ok) {
           console.error("Failed to fetch appraisal", res.status, json);
-          setError(json.error || "Failed to load appraisal.");
+          setError(json?.error || "Failed to load appraisal.");
           return;
         }
 
-        const row: any = json.appraisal ?? json;
+        const row: AppraisalApiRow | null = (json.appraisal ?? json) || null;
 
         if (!row) {
           setError("Appraisal not found.");
@@ -53,6 +63,7 @@ export default function EditAppraisalClient({
           ...rawData,
         };
 
+        // normalise contactIds into numbers (AppraisalForm expects numbers)
         const fromRowIds = (rawData.contactIds ?? []) as any[];
         merged.contactIds = fromRowIds
           .map((v) => Number(v))
@@ -69,9 +80,11 @@ export default function EditAppraisalClient({
         setLoading(false);
       }
     };
-
-    void load();
   }, [appraisalId]);
+
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
 
   if (loading) {
     return (

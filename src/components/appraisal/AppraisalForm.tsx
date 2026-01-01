@@ -673,6 +673,8 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
               form={form}
               updateField={updateField}
               toggleArrayValue={toggleArrayValue}
+              appraisalId={appraisalId ?? 0}
+              googleConnected={true /* replace with real value */}
             />
           )}
 

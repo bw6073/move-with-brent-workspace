@@ -2,8 +2,21 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 type RouteContext = {
   params: Promise<{ id: string }>;
+};
+
+type AppraisalRow = {
+  id: number;
+  user_id: string;
+  status: string | null;
+  property_id: number | null;
+  google_event_id: string | null;
+  data: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
 };
 
 async function requireUser(supabase: any) {
@@ -59,8 +72,9 @@ async function ensurePropertyIdFromAddress(
     .eq("postcode", postcode || null)
     .maybeSingle();
 
-  if (findError)
+  if (findError) {
     console.error("[ensurePropertyIdFromAddress] findError", findError);
+  }
   if (existing?.id) return Number(existing.id);
 
   const insertPayload: Record<string, unknown> = {
@@ -72,8 +86,9 @@ async function ensurePropertyIdFromAddress(
     market_status: "appraisal",
   };
 
-  if (norm(input.propertyType))
+  if (norm(input.propertyType)) {
     insertPayload.property_type = norm(input.propertyType);
+  }
 
   const { data: created, error: createError } = await supabase
     .from("properties")
@@ -87,6 +102,11 @@ async function ensurePropertyIdFromAddress(
   }
 
   return created?.id ? Number(created.id) : null;
+}
+
+function getGoogleEventIdFromPayload(payload: any): string | null {
+  const v = payload?.google_event_id ?? payload?.googleEventId;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
 // ---------- GET ----------
@@ -107,10 +127,12 @@ export async function GET(_req: Request, context: RouteContext) {
 
   const { data, error } = await supabase
     .from("appraisals")
-    .select("*")
+    .select(
+      "id, user_id, status, property_id, google_event_id, data, created_at, updated_at"
+    )
     .eq("id", appraisalId)
     .eq("user_id", user.id)
-    .maybeSingle();
+    .maybeSingle<AppraisalRow>();
 
   if (error) {
     console.error("[GET /api/appraisals/[id]]", error);
@@ -191,23 +213,42 @@ export async function PUT(req: Request, context: RouteContext) {
     });
   }
 
-  const mergedData = {
+  const mergedData: Record<string, any> = {
     ...(formData ?? {}),
     propertyId: effectivePropertyId ?? null,
   };
 
+  // OPTIONAL: allow client to clear google_event_id by sending null/""
+  // (but prevent random overwrites unless explicitly provided)
+  const maybeGoogleEventId = getGoogleEventIdFromPayload(body);
+  const wantsClearGoogleEventId =
+    body?.google_event_id === null ||
+    body?.googleEventId === null ||
+    body?.google_event_id === "" ||
+    body?.googleEventId === "";
+
+  const updatePayload: Record<string, any> = {
+    data: mergedData,
+    status: status ?? "DRAFT",
+    property_id: effectivePropertyId,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (wantsClearGoogleEventId) {
+    updatePayload.google_event_id = null;
+  } else if (maybeGoogleEventId) {
+    updatePayload.google_event_id = maybeGoogleEventId;
+  }
+
   const { data, error } = await supabase
     .from("appraisals")
-    .update({
-      data: mergedData,
-      status: status ?? "DRAFT",
-      property_id: effectivePropertyId,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("id", appraisalId)
     .eq("user_id", user.id)
-    .select("*")
-    .maybeSingle();
+    .select(
+      "id, user_id, status, property_id, google_event_id, data, created_at, updated_at"
+    )
+    .maybeSingle<AppraisalRow>();
 
   if (error) {
     console.error("[PUT /api/appraisals/[id]]", error);
