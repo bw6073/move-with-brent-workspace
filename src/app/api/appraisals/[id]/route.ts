@@ -19,6 +19,14 @@ type AppraisalRow = {
   updated_at: string;
 };
 
+type PropertyLookupInput = {
+  streetAddress?: unknown;
+  suburb?: unknown;
+  postcode?: unknown;
+  state?: unknown;
+  propertyType?: unknown;
+};
+
 async function requireUser(supabase: any) {
   const {
     data: { user },
@@ -40,20 +48,30 @@ function parseId(id: string) {
   return Number.isFinite(n) ? n : null;
 }
 
-function norm(s: unknown) {
-  return String(s ?? "").trim();
+function norm(v: unknown) {
+  return String(v ?? "").trim();
+}
+
+function toFiniteNumber(v: unknown): number | null {
+  const n = typeof v === "number" ? v : Number(String(v));
+  return Number.isFinite(n) ? n : null;
+}
+
+function getGoogleEventIdFromPayload(payload: any): string | null {
+  const v = payload?.google_event_id ?? payload?.googleEventId;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function wantsClearGoogleEventId(payload: any): boolean {
+  const v1 = payload?.google_event_id;
+  const v2 = payload?.googleEventId;
+  return v1 === null || v2 === null || v1 === "" || v2 === "";
 }
 
 async function ensurePropertyIdFromAddress(
   supabase: any,
   userId: string,
-  input: {
-    streetAddress?: unknown;
-    suburb?: unknown;
-    postcode?: unknown;
-    state?: unknown;
-    propertyType?: unknown;
-  }
+  input: PropertyLookupInput
 ): Promise<number | null> {
   const street_address = norm(input.streetAddress);
   const suburb = norm(input.suburb);
@@ -72,9 +90,8 @@ async function ensurePropertyIdFromAddress(
     .eq("postcode", postcode || null)
     .maybeSingle();
 
-  if (findError) {
+  if (findError)
     console.error("[ensurePropertyIdFromAddress] findError", findError);
-  }
   if (existing?.id) return Number(existing.id);
 
   const insertPayload: Record<string, unknown> = {
@@ -86,9 +103,8 @@ async function ensurePropertyIdFromAddress(
     market_status: "appraisal",
   };
 
-  if (norm(input.propertyType)) {
-    insertPayload.property_type = norm(input.propertyType);
-  }
+  const property_type = norm(input.propertyType);
+  if (property_type) insertPayload.property_type = property_type;
 
   const { data: created, error: createError } = await supabase
     .from("properties")
@@ -104,9 +120,26 @@ async function ensurePropertyIdFromAddress(
   return created?.id ? Number(created.id) : null;
 }
 
-function getGoogleEventIdFromPayload(payload: any): string | null {
-  const v = payload?.google_event_id ?? payload?.googleEventId;
-  return typeof v === "string" && v.trim() ? v.trim() : null;
+async function validatePropertyIdBelongsToUser(
+  supabase: any,
+  userId: string,
+  propertyId: number
+) {
+  const { data: p, error: pErr } = await supabase
+    .from("properties")
+    .select("id")
+    .eq("id", propertyId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (pErr || !p) {
+    return NextResponse.json(
+      { error: "Invalid property_id for this user" },
+      { status: 400 }
+    );
+  }
+
+  return null;
 }
 
 // ---------- GET ----------
@@ -158,10 +191,8 @@ export async function PUT(req: Request, context: RouteContext) {
     );
   }
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
@@ -169,40 +200,25 @@ export async function PUT(req: Request, context: RouteContext) {
   const { user, response } = await requireUser(supabase);
   if (response) return response;
 
-  const {
-    data: formData,
-    status,
-    contactIds,
-    property_id,
-    propertyId,
-  } = body ?? {};
+  const formData = (body as any)?.data ?? null;
+  const status = (body as any)?.status ?? "DRAFT";
+  const contactIds = (body as any)?.contactIds;
 
-  // Decide property id:
-  // - if explicitly provided: validate it belongs to this user
-  // - else: auto link/create from address inside the form data
-  let effectivePropertyId: number | null =
-    typeof property_id === "number"
-      ? property_id
-      : typeof propertyId === "number"
-      ? propertyId
-      : typeof formData?.propertyId === "number"
-      ? formData.propertyId
-      : null;
+  // Decide property id (explicit -> validate; else derive from address)
+  const explicitPropertyId =
+    toFiniteNumber((body as any)?.property_id) ??
+    toFiniteNumber((body as any)?.propertyId) ??
+    toFiniteNumber(formData?.propertyId);
+
+  let effectivePropertyId: number | null = explicitPropertyId;
 
   if (effectivePropertyId) {
-    const { data: p, error: pErr } = await supabase
-      .from("properties")
-      .select("id")
-      .eq("id", effectivePropertyId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (pErr || !p) {
-      return NextResponse.json(
-        { error: "Invalid property_id for this user" },
-        { status: 400 }
-      );
-    }
+    const bad = await validatePropertyIdBelongsToUser(
+      supabase,
+      user.id,
+      effectivePropertyId
+    );
+    if (bad) return bad;
   } else {
     effectivePropertyId = await ensurePropertyIdFromAddress(supabase, user.id, {
       streetAddress: formData?.streetAddress,
@@ -218,26 +234,19 @@ export async function PUT(req: Request, context: RouteContext) {
     propertyId: effectivePropertyId ?? null,
   };
 
-  // OPTIONAL: allow client to clear google_event_id by sending null/""
-  // (but prevent random overwrites unless explicitly provided)
-  const maybeGoogleEventId = getGoogleEventIdFromPayload(body);
-  const wantsClearGoogleEventId =
-    body?.google_event_id === null ||
-    body?.googleEventId === null ||
-    body?.google_event_id === "" ||
-    body?.googleEventId === "";
-
   const updatePayload: Record<string, any> = {
     data: mergedData,
-    status: status ?? "DRAFT",
+    status,
     property_id: effectivePropertyId,
     updated_at: new Date().toISOString(),
   };
 
-  if (wantsClearGoogleEventId) {
+  // google_event_id updates are opt-in only
+  if (wantsClearGoogleEventId(body)) {
     updatePayload.google_event_id = null;
-  } else if (maybeGoogleEventId) {
-    updatePayload.google_event_id = maybeGoogleEventId;
+  } else {
+    const gid = getGoogleEventIdFromPayload(body);
+    if (gid) updatePayload.google_event_id = gid;
   }
 
   const { data, error } = await supabase
@@ -262,22 +271,19 @@ export async function PUT(req: Request, context: RouteContext) {
   // Sync join table for linked contacts (if provided)
   if (Array.isArray(contactIds)) {
     const numericContactIds = contactIds
-      .map((v) => Number(v))
-      .filter((n) => Number.isFinite(n));
+      .map((v: any) => Number(v))
+      .filter((n: number) => Number.isFinite(n));
 
-    // clear
     const { error: deleteError } = await supabase
       .from("appraisal_contacts")
       .delete()
       .eq("appraisal_id", appraisalId);
 
-    if (deleteError) {
+    if (deleteError)
       console.error("[PUT appraisal_contacts delete]", deleteError);
-      // not fatal
-    }
 
     if (numericContactIds.length > 0) {
-      const rows = numericContactIds.map((cid, index) => ({
+      const rows = numericContactIds.map((cid: number, index: number) => ({
         appraisal_id: appraisalId,
         contact_id: cid,
         role: "owner",
@@ -288,10 +294,8 @@ export async function PUT(req: Request, context: RouteContext) {
         .from("appraisal_contacts")
         .insert(rows);
 
-      if (insertError) {
+      if (insertError)
         console.error("[PUT appraisal_contacts insert]", insertError);
-        // not fatal
-      }
     }
   }
 
@@ -314,7 +318,6 @@ export async function DELETE(_req: Request, context: RouteContext) {
   const { user, response } = await requireUser(supabase);
   if (response) return response;
 
-  // Clear join links first
   const { error: deleteLinksError } = await supabase
     .from("appraisal_contacts")
     .delete()
@@ -322,7 +325,6 @@ export async function DELETE(_req: Request, context: RouteContext) {
 
   if (deleteLinksError) {
     console.error("[DELETE appraisal_contacts]", deleteLinksError);
-    // not fatal
   }
 
   const { error } = await supabase
