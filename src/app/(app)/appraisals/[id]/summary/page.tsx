@@ -10,6 +10,8 @@ import {
 import { AppraisalSummaryClient } from "./AppraisalSummaryClient";
 import { AppraisalPhotoPrintGrid } from "@/components/appraisal/AppraisalPhotoPrintGrid";
 
+export const dynamic = "force-dynamic";
+
 type PageProps = {
   params: Promise<{ id: string }>;
 };
@@ -17,7 +19,7 @@ type PageProps = {
 type AppraisalRow = {
   id: number;
   status: string | null;
-  data: any;
+  data: unknown;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -26,7 +28,7 @@ export default async function AppraisalSummaryPage(props: PageProps) {
   const { id } = await props.params;
   const appraisalId = Number(id);
 
-  if (Number.isNaN(appraisalId)) {
+  if (!Number.isFinite(appraisalId)) {
     notFound();
   }
 
@@ -34,10 +36,10 @@ export default async function AppraisalSummaryPage(props: PageProps) {
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    // You could render a nicer "Sign-in required" UI if you want.
+  if (authError || !user) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-10">
         <p className="text-sm text-slate-600">You must be signed in.</p>
@@ -59,7 +61,6 @@ export default async function AppraisalSummaryPage(props: PageProps) {
 
   const rawForm = (data.data ?? {}) as Partial<FormState>;
 
-  // Merge onto EMPTY_FORM so we always have a full shape
   const form: FormState = {
     ...EMPTY_FORM,
     ...rawForm,
@@ -67,7 +68,6 @@ export default async function AppraisalSummaryPage(props: PageProps) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Simple header for the summary view */}
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div>
@@ -81,17 +81,15 @@ export default async function AppraisalSummaryPage(props: PageProps) {
 
           <Link
             href={`/appraisals/${data.id}/edit`}
-            className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 no-print"
+            className="no-print rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
           >
             ← Back to appraisal
           </Link>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-6 space-y-8">
-        <AppraisalSummaryClient {...({ appraisal: data, form } as any)} />
-
-        {/* Printable photo grid */}
+      <main className="mx-auto max-w-5xl space-y-8 px-6 py-6">
+        <AppraisalSummaryClient appraisal={data} form={form} />
         <AppraisalPhotoPrintGrid appraisalId={data.id} />
       </main>
     </div>

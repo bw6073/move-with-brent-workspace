@@ -1,3 +1,4 @@
+// src/app/(app)/appraisals/[id]/summary/AppraisalSummaryClient.tsx
 "use client";
 
 import React from "react";
@@ -19,7 +20,6 @@ const formatDate = (iso: string | null) => {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-
   return d.toLocaleDateString("en-AU", {
     day: "2-digit",
     month: "2-digit",
@@ -27,15 +27,14 @@ const formatDate = (iso: string | null) => {
   });
 };
 
-// Helper to format arbitrary values for the “Additional details” table
 const formatValue = (value: unknown): string => {
   if (value === null || value === undefined) return "—";
 
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
+  if (typeof value === "string") {
+    return value.trim() === "" ? "—" : value;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
 
@@ -59,12 +58,15 @@ const prettifyKey = (key: string) =>
     .replace(/\s+/g, " ")
     .replace(/^./, (c) => c.toUpperCase());
 
+const safeFilePart = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+
 export function AppraisalSummaryClient({ appraisal, form }: Props) {
-  const handlePrint = () => {
-    if (typeof window !== "undefined") {
-      window.print();
-    }
-  };
+  const handlePrint = () => window.print();
 
   const fullAddress = [
     form.streetAddress,
@@ -75,14 +77,27 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     .filter(Boolean)
     .join(" ");
 
+  const nonPriceGoalLines = (() => {
+    const g = form.nonPriceGoals;
+    if (!g) return [];
+    const lines: string[] = [];
+    if (g.bestPrice !== undefined)
+      lines.push(`Best possible price: ${g.bestPrice}/5`);
+    if (g.speed !== undefined) lines.push(`Speed of sale: ${g.speed}/5`);
+    if (g.minimalDisruption !== undefined)
+      lines.push(`Minimal disruption: ${g.minimalDisruption}/5`);
+    if (g.privacy !== undefined)
+      lines.push(`Privacy / low profile: ${g.privacy}/5`);
+    if (g.longSettlement !== undefined)
+      lines.push(`Long settlement / rent-back: ${g.longSettlement}/5`);
+    return lines;
+  })();
+
   // ---------------- PDF DOWNLOAD ----------------
   const handleDownloadPdf = async () => {
     const { default: jsPDF } = await import("jspdf");
 
-    const doc = new jsPDF({
-      unit: "pt",
-      format: "a4",
-    });
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
 
     const marginX = 40;
     const lineHeight = 14;
@@ -115,7 +130,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       y += lineHeight * (lines.length + 0.3);
     };
 
-    const addParagraph = (text: string) => {
+    const addParagraph = (text: string | undefined) => {
       const safeText = text && text.trim() !== "" ? text : "—";
       const lines = doc.splitTextToSize(safeText, 515);
       ensureSpace(lineHeight * (lines.length + 0.5));
@@ -135,13 +150,16 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     // Header
     doc.setFont("helvetica", "bold");
     doc.setFontSize(15);
+
     const title =
       form.appraisalTitle ||
       fullAddress ||
       `Appraisal #${String(appraisal.id)}`;
+
     doc.text("Appraisal Summary", marginX, 30);
     doc.setFontSize(11);
     doc.text(title, marginX, 46);
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.text(
@@ -151,6 +169,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       marginX,
       60
     );
+
     y = 80;
     doc.setFontSize(10);
 
@@ -158,7 +177,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     addSectionTitle("1. Overview");
     addLabelValue("Property type", form.propertyType || "—");
     addLabelValue("Appraisal date", form.appraisalDate || "—");
-    addLabelValue("Source of enquiry", form.sourceOfEnquiry || "");
+    addLabelValue("Source of enquiry", form.sourceOfEnquiry || "—");
     addParagraph(
       form.firstContactNotes ||
         "Notes about first contact not recorded in this appraisal."
@@ -166,6 +185,8 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
 
     // 2. Property basics & site
     addSectionTitle("2. Property basics & site");
+    addLabelValue("Year built", form.yearBuilt || "—");
+    addLabelValue("Construction", form.construction || "—");
 
     const landLineParts: string[] = [];
     if (form.landArea) {
@@ -200,15 +221,14 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
 
     addLabelValue(
       "Services",
-      (form.services && form.services.length > 0
-        ? form.services.join(", ")
-        : "—") as string
+      form.services && form.services.length > 0 ? form.services.join(", ") : "—"
     );
+
     addLabelValue(
       "Outdoor features",
-      (form.outdoorFeatures && form.outdoorFeatures.length > 0
+      form.outdoorFeatures && form.outdoorFeatures.length > 0
         ? form.outdoorFeatures.join(", ")
-        : "—") as string
+        : "—"
     );
 
     // 3. Interior
@@ -224,6 +244,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       addLabelValue("Rooms (count)", String(form.rooms.length));
       form.rooms.forEach((room) => {
         const label = room.label || room.type || "Room";
+
         const sizeBits: string[] = [];
         if (room.lengthMetres || room.widthMetres) {
           sizeBits.push(
@@ -243,14 +264,13 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         }
 
         const parts: string[] = [];
-        if (room.conditionRating) {
+        if (room.conditionRating)
           parts.push(`Condition: ${room.conditionRating}/5`);
-        }
         if (sizeBits.length) parts.push(sizeBits.join(" · "));
         if (detailBits.length) parts.push(detailBits.join(" · "));
         if (room.specialFeatures) parts.push(room.specialFeatures);
 
-        addBullet(label, parts.join(" · "));
+        addBullet(label, parts.join(" · ") || "—");
       });
     }
 
@@ -260,6 +280,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       form.landscapeSummary ||
         "No general exterior / landscape summary recorded in this appraisal."
     );
+
     if (form.exteriorAreas && form.exteriorAreas.length > 0) {
       addLabelValue(
         "Structures / outdoor areas (count)",
@@ -267,6 +288,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       );
       form.exteriorAreas.forEach((area) => {
         const label = area.label || area.type || "Structure";
+
         const sizeBits: string[] = [];
         if (area.lengthMetres || area.widthMetres) {
           sizeBits.push(
@@ -325,7 +347,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       form.decisionNotes || "No notes about the decision-making process."
     );
 
-    // 6. Motivation & expectations (Step 6)
+    // 6. Motivation & expectations
     addSectionTitle("6. Motivation & expectations");
     addLabelValue("Primary reason for moving", form.primaryReason || "—");
     addLabelValue("Ideal timeframe", form.idealTimeframe || "—");
@@ -335,28 +357,14 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     );
     addLabelValue("Dates to avoid", form.datesToAvoid || "—");
 
-    // Non-price goals summary
-    if (form.nonPriceGoals) {
-      const lines: string[] = [];
-      const g = form.nonPriceGoals;
-      if (g.bestPrice !== undefined)
-        lines.push(`Best possible price: ${g.bestPrice}/5`);
-      if (g.speed !== undefined) lines.push(`Speed of sale: ${g.speed}/5`);
-      if (g.minimalDisruption !== undefined)
-        lines.push(`Minimal disruption: ${g.minimalDisruption}/5`);
-      if (g.privacy !== undefined)
-        lines.push(`Privacy / low profile: ${g.privacy}/5`);
-      if (g.longSettlement !== undefined)
-        lines.push(`Long settlement / rent-back: ${g.longSettlement}/5`);
-      if (lines.length > 0) {
-        addParagraph(lines.join(" · "));
-      }
+    if (nonPriceGoalLines.length > 0) {
+      addParagraph(nonPriceGoalLines.join(" · "));
     }
+
     addParagraph(
       form.otherGoalNotes || "No extra notes about non-price goals recorded."
     );
 
-    // Price expectations (also part of Step 6)
     if (form.hasPriceExpectation) {
       addLabelValue(
         "Vendor expectation",
@@ -371,7 +379,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       addLabelValue("Vendor expectation", "Not specifically stated");
     }
 
-    // 7. Pricing, preparation & fees (Step 7)
+    // 7. Pricing, preparation & fees
     addSectionTitle("7. Pricing, preparation & fees");
     addLabelValue(
       "Suggested price range",
@@ -384,10 +392,8 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       form.comparablesNotes ||
         "No comparable sales notes recorded in this appraisal."
     );
-
     addLabelValue("Must do before photography", form.mustDoPrep || "—");
     addLabelValue("Nice to have if possible", form.niceToHavePrep || "—");
-
     addLabelValue(
       "Fees / authority discussed",
       form.feesDiscussed ? "Yes" : "No"
@@ -397,11 +403,13 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       addLabelValue("Likelihood of signing", form.agreementLikelihood || "—");
     }
 
-    // 8. Presentation, marketing & follow-up (Step 8)
+    // 8. Presentation, marketing & follow-up
     addSectionTitle("8. Presentation, marketing & follow-up");
     addLabelValue(
       "Presentation score (1–10)",
-      form.presentationScore ? String(form.presentationScore) : "Not scored"
+      form.presentationScore !== null && form.presentationScore !== undefined
+        ? String(form.presentationScore)
+        : "Not scored"
     );
     addParagraph(
       form.presentationSummary ||
@@ -425,14 +433,15 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     );
     addLabelValue("Follow-up date", form.followUpDate || "—");
 
-    doc.save(
-      `appraisal-${appraisal.id}-${form.streetAddress || "summary"}.pdf`
-    );
+    const fileBase =
+      safeFilePart(form.streetAddress || form.appraisalTitle || "summary") ||
+      "summary";
+
+    doc.save(`appraisal-${appraisal.id}-${fileBase}.pdf`);
   };
 
-  // ---------- Keys already shown explicitly above ----------
+  // Keys shown explicitly above (so they don't repeat in "Additional details")
   const displayedKeys = new Set<string>([
-    // Step 1
     "appraisalTitle",
     "streetAddress",
     "suburb",
@@ -441,7 +450,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "appraisalDate",
     "sourceOfEnquiry",
     "firstContactNotes",
-    // Step 2
+
     "propertyType",
     "yearBuilt",
     "construction",
@@ -457,15 +466,15 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "carSpaces",
     "services",
     "outdoorFeatures",
-    // Step 3
+
     "overallCondition",
     "styleTheme",
     "interiorNotes",
     "rooms",
-    // Step 4
+
     "landscapeSummary",
     "exteriorAreas",
-    // Step 5
+
     "ownerNames",
     "ownerPhonePrimary",
     "ownerPhoneSecondary",
@@ -482,7 +491,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "ownerNextMove",
     "decisionMakers",
     "decisionNotes",
-    // Step 6
+
     "primaryReason",
     "idealTimeframe",
     "motivationDetail",
@@ -494,7 +503,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "expectationComments",
     "nonPriceGoals",
     "otherGoalNotes",
-    // Step 7
+
     "suggestedRangeMin",
     "suggestedRangeMax",
     "pricingStrategy",
@@ -504,7 +513,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "feesDiscussed",
     "proposedFee",
     "agreementLikelihood",
-    // Step 8
+
     "presentationScore",
     "presentationSummary",
     "targetBuyerProfile",
@@ -514,14 +523,9 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "followUpDate",
   ]);
 
-  const excludedKeys = new Set<string>([
-    // Add internal / technical fields here if you introduce any later
-  ]);
-
   const additionalEntries = Object.entries(form as Record<string, unknown>)
     .filter(([key, value]) => {
       if (displayedKeys.has(key)) return false;
-      if (excludedKeys.has(key)) return false;
       if (value === null || value === undefined) return false;
       if (value === "") return false;
       if (Array.isArray(value) && value.length === 0) return false;
@@ -531,15 +535,14 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
 
   return (
     <div className="space-y-6 rounded-xl bg-white p-6 shadow-sm print:bg-white print:p-0 print:shadow-none">
-      {/* Top toolbar (hidden when printing) */}
+      {/* Toolbar */}
       <div className="no-print flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">
             Appraisal summary
           </h2>
           <p className="text-xs text-slate-500">
-            Use &ldquo;Print&rdquo; or &ldquo;Download PDF&rdquo; to generate a
-            copy for your records.
+            Use “Print” or “Download PDF” to generate a copy for your records.
           </p>
         </div>
 
@@ -561,7 +564,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         </div>
       </div>
 
-      {/* Header block */}
+      {/* Header */}
       <section className="border-b border-slate-200 pb-4">
         <h1 className="text-2xl font-semibold text-slate-900">
           {form.appraisalTitle || fullAddress || `Appraisal #${appraisal.id}`}
@@ -629,6 +632,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         <h2 className="mb-1 text-sm font-semibold text-slate-900">
           2. Property basics & site
         </h2>
+
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <p className="text-xs font-semibold text-slate-500">Land size</p>
@@ -640,6 +644,16 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
                 : "—"}
               {form.zoning ? ` · Zoning: ${form.zoning}` : ""}
             </p>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-slate-500">Year built</p>
+            <p className="text-slate-800">{form.yearBuilt || "—"}</p>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-slate-500">Construction</p>
+            <p className="text-slate-800">{form.construction || "—"}</p>
           </div>
 
           <div>
@@ -800,7 +814,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
           4. Exterior & land
         </h2>
 
-        <div className="text-sm space-y-2">
+        <div className="space-y-2 text-sm">
           <div>
             <p className="text-xs font-semibold text-slate-500">
               Exterior notes & landscape summary
@@ -819,6 +833,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
             <ul className="space-y-1">
               {form.exteriorAreas.map((area) => {
                 const label = area.label || area.type || "Structure";
+
                 const sizeBits: string[] = [];
                 if (area.lengthMetres || area.widthMetres) {
                   sizeBits.push(
@@ -872,21 +887,29 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
             </p>
             <p className="text-slate-800">{form.ownerNames || "—"}</p>
           </div>
+
           <div>
             <p className="text-xs font-semibold text-slate-500">
-              Primary phone / email
+              Phone / email
             </p>
             <p className="text-slate-800">
-              {form.ownerPhonePrimary || "—"}
-              {form.ownerEmail ? ` · ${form.ownerEmail}` : ""}
+              {[
+                form.ownerPhonePrimary,
+                form.ownerPhoneSecondary,
+                form.ownerEmail,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "—"}
             </p>
           </div>
+
           <div>
             <p className="text-xs font-semibold text-slate-500">
               Postal address
             </p>
             <p className="text-slate-800">{form.postalAddress || "—"}</p>
           </div>
+
           <div>
             <p className="text-xs font-semibold text-slate-500">Occupancy</p>
             <p className="text-slate-800">{form.occupancyType || "—"}</p>
@@ -894,33 +917,59 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         </div>
 
         {form.occupancyType === "TENANT" && (
-          <div className="mt-3 grid gap-3 text-xs sm:grid-cols-3">
-            <div>
-              <p className="font-semibold text-slate-500">Tenant name</p>
-              <p className="text-slate-800">{form.tenantName || "—"}</p>
+          <div className="mt-3 space-y-3">
+            <div className="grid gap-3 text-xs sm:grid-cols-3">
+              <div>
+                <p className="font-semibold text-slate-500">Tenant name</p>
+                <p className="text-slate-800">{form.tenantName || "—"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-500">Lease expiry</p>
+                <p className="text-slate-800">{form.leaseExpiry || "—"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-500">
+                  Current rent / frequency
+                </p>
+                <p className="text-slate-800">
+                  {(form.currentRent || "—") +
+                    (form.rentFrequency ? ` (${form.rentFrequency})` : "")}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-semibold text-slate-500">Lease expiry</p>
-              <p className="text-slate-800">{form.leaseExpiry || "—"}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-500">
-                Current rent / frequency
+
+            <div className="text-sm">
+              <p className="text-xs font-semibold text-slate-500">
+                Tenancy notes
               </p>
-              <p className="text-slate-800">
-                {(form.currentRent || "—") +
-                  (form.rentFrequency ? ` (${form.rentFrequency})` : "")}
+              <p className="whitespace-pre-wrap text-slate-800">
+                {form.tenantNotes || "—"}
               </p>
             </div>
           </div>
         )}
 
-        {form.decisionMakers && (
+        {form.occupancyType === "OWNER" && (
+          <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">
+                How long lived here
+              </p>
+              <p className="text-slate-800">{form.ownerHowLong || "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-500">Next move</p>
+              <p className="text-slate-800">{form.ownerNextMove || "—"}</p>
+            </div>
+          </div>
+        )}
+
+        {(form.decisionMakers || form.decisionNotes) && (
           <div className="mt-3 text-sm">
             <p className="text-xs font-semibold text-slate-500">
               Decision makers & notes
             </p>
-            <p className="text-slate-800">{form.decisionMakers}</p>
+            <p className="text-slate-800">{form.decisionMakers || "—"}</p>
             {form.decisionNotes && (
               <p className="mt-1 whitespace-pre-wrap text-slate-800">
                 {form.decisionNotes}
@@ -930,7 +979,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         )}
       </section>
 
-      {/* 6. Motivation & expectations (Step 6) */}
+      {/* 6. Motivation & expectations */}
       <section className="border-b border-slate-200 pb-4">
         <h2 className="mb-1 text-sm font-semibold text-slate-900">
           6. Motivation & expectations
@@ -967,37 +1016,28 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
           </div>
         </div>
 
-        {/* Non-price goals */}
-        {form.nonPriceGoals && (
+        {nonPriceGoalLines.length > 0 && (
           <div className="mt-3 text-sm">
             <p className="text-xs font-semibold text-slate-500">
               Non-price goals
             </p>
             <ul className="mt-1 space-y-0.5 text-xs text-slate-800">
-              <li>Best possible price: {form.nonPriceGoals.bestPrice}/5</li>
-              <li>Speed of sale: {form.nonPriceGoals.speed}/5</li>
-              <li>
-                Minimal disruption: {form.nonPriceGoals.minimalDisruption}/5
-              </li>
-              <li>Privacy / low profile: {form.nonPriceGoals.privacy}/5</li>
-              <li>
-                Long settlement / rent-back: {form.nonPriceGoals.longSettlement}
-                /5
-              </li>
+              {nonPriceGoalLines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
             </ul>
           </div>
         )}
 
         <div className="mt-3 text-sm">
           <p className="text-xs font-semibold text-slate-500">
-            Anything else that would make this a &ldquo;win&rdquo;?
+            Anything else that would make this a “win”?
           </p>
           <p className="whitespace-pre-wrap text-slate-800">
             {form.otherGoalNotes || "—"}
           </p>
         </div>
 
-        {/* Price expectations */}
         <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <p className="text-xs font-semibold text-slate-500">
@@ -1028,7 +1068,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         </div>
       </section>
 
-      {/* 7. Pricing, preparation & fees (Step 7) */}
+      {/* 7. Pricing, preparation & fees */}
       <section className="border-b border-slate-200 pb-4">
         <h2 className="mb-1 text-sm font-semibold text-slate-900">
           7. Pricing, preparation & fees
@@ -1108,7 +1148,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         </div>
       </section>
 
-      {/* 8. Presentation, marketing & follow-up (Step 8) */}
+      {/* 8. Presentation, marketing & follow-up */}
       <section className="border-b border-slate-200 pb-4">
         <h2 className="mb-1 text-sm font-semibold text-slate-900">
           8. Presentation, marketing & follow-up
@@ -1178,7 +1218,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         </div>
       </section>
 
-      {/* 9. Additional details (catch-all) */}
+      {/* 9. Additional details */}
       {additionalEntries.length > 0 && (
         <section>
           <h2 className="mb-1 text-sm font-semibold text-slate-900">
