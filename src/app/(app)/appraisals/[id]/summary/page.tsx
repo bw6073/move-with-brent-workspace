@@ -24,13 +24,16 @@ type AppraisalRow = {
   updated_at: string | null;
 };
 
+function parseId(id: string) {
+  const n = Number(id);
+  return Number.isFinite(n) ? n : null;
+}
+
 export default async function AppraisalSummaryPage(props: PageProps) {
   const { id } = await props.params;
-  const appraisalId = Number(id);
+  const appraisalId = parseId(id);
 
-  if (!Number.isFinite(appraisalId)) {
-    notFound();
-  }
+  if (!appraisalId) notFound();
 
   const supabase = await createClient();
 

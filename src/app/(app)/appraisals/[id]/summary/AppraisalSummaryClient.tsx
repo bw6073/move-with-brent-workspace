@@ -3,6 +3,8 @@
 
 import React from "react";
 import type { FormState } from "@/components/appraisal/config/types";
+import { ROOM_FEATURE_CONFIG } from "@/components/appraisal/config/roomFeatures";
+import { EXTERIOR_FEATURE_CONFIG } from "@/components/appraisal/config/exteriorFeatures";
 
 type AppraisalRecord = {
   id: number;
@@ -14,6 +16,29 @@ type AppraisalRecord = {
 type Props = {
   appraisal: AppraisalRecord;
   form: FormState;
+};
+
+type RoomLike = {
+  id: number;
+  label?: string | null;
+  type?: string | null;
+  lengthMetres?: string | null;
+  widthMetres?: string | null;
+  conditionRating?: string | number | null;
+  flooring?: string | null;
+  heatingCooling?: string | null;
+  specialFeatures?: string | null;
+  extraFields?: Record<string, unknown> | null;
+};
+
+type ExteriorLike = {
+  id: number;
+  label?: string | null;
+  type?: string | null;
+  lengthMetres?: string | null;
+  widthMetres?: string | null;
+  heightMetres?: string | null;
+  extraFields?: Record<string, unknown> | null;
 };
 
 const formatDate = (iso: string | null) => {
@@ -31,7 +56,8 @@ const formatValue = (value: unknown): string => {
   if (value === null || value === undefined) return "—";
 
   if (typeof value === "string") {
-    return value.trim() === "" ? "—" : value;
+    const v = value.trim();
+    return v === "" ? "—" : v;
   }
 
   if (typeof value === "number" || typeof value === "boolean") {
@@ -65,6 +91,49 @@ const safeFilePart = (s: string) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
 
+const getRoomConfig = (type: string | null | undefined) => {
+  const t = (type || "other") as keyof typeof ROOM_FEATURE_CONFIG;
+  return ROOM_FEATURE_CONFIG[t] ?? ROOM_FEATURE_CONFIG.other ?? [];
+};
+
+const getExteriorConfig = (type: string | null | undefined) => {
+  const t = (type || "other") as keyof typeof EXTERIOR_FEATURE_CONFIG;
+  return EXTERIOR_FEATURE_CONFIG[t] ?? EXTERIOR_FEATURE_CONFIG.other ?? [];
+};
+
+const labelledExtrasFromConfig = (
+  config: Array<{ id: string; label: string }>,
+  extraFields: Record<string, unknown> | null | undefined,
+  opts?: { hideNo?: boolean }
+) => {
+  const hideNo = opts?.hideNo ?? false;
+  const extra = extraFields ?? {};
+
+  return config
+    .map((f) => {
+      const raw = extra[f.id];
+      if (raw === null || raw === undefined) return null;
+
+      const value = String(raw).trim();
+      if (!value) return null;
+
+      if (hideNo) {
+        const v = value.toLowerCase();
+        if (v === "no" || v === "false") return null;
+      }
+
+      return `${f.label}: ${value}`;
+    })
+    .filter(Boolean) as string[];
+};
+
+const sizeLine = (a?: string | null, b?: string | null, c?: string | null) => {
+  const parts: string[] = [];
+  if (a || b) parts.push(`${a || "?"}m x ${b || "?"}m`);
+  if (c) parts.push(`H: ${c}m`);
+  return parts.join(" · ");
+};
+
 export function AppraisalSummaryClient({ appraisal, form }: Props) {
   const handlePrint = () => window.print();
 
@@ -76,6 +145,9 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
   ]
     .filter(Boolean)
     .join(" ");
+
+  const rooms = (form.rooms ?? []) as unknown as RoomLike[];
+  const exteriorAreas = (form.exteriorAreas ?? []) as unknown as ExteriorLike[];
 
   const nonPriceGoalLines = (() => {
     const g = form.nonPriceGoals;
@@ -100,6 +172,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     const doc = new jsPDF({ unit: "pt", format: "a4" });
 
     const marginX = 40;
+    const maxWidth = 515;
     const lineHeight = 14;
     const pageHeight = doc.internal.pageSize.getHeight();
     let y = 60;
@@ -124,7 +197,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     const addLabelValue = (label: string, value: string | undefined) => {
       const safeValue = value && value.trim() !== "" ? value : "—";
       const text = `${label}: ${safeValue}`;
-      const lines = doc.splitTextToSize(text, 515);
+      const lines = doc.splitTextToSize(text, maxWidth);
       ensureSpace(lineHeight * (lines.length + 0.5));
       doc.text(lines, marginX, y);
       y += lineHeight * (lines.length + 0.3);
@@ -132,7 +205,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
 
     const addParagraph = (text: string | undefined) => {
       const safeText = text && text.trim() !== "" ? text : "—";
-      const lines = doc.splitTextToSize(safeText, 515);
+      const lines = doc.splitTextToSize(safeText, maxWidth);
       ensureSpace(lineHeight * (lines.length + 0.5));
       doc.text(lines, marginX, y);
       y += lineHeight * (lines.length + 0.3);
@@ -141,7 +214,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     const addBullet = (label: string, value: string) => {
       const safeValue = value && value.trim() !== "" ? value : "—";
       const text = `• ${label}: ${safeValue}`;
-      const lines = doc.splitTextToSize(text, 515);
+      const lines = doc.splitTextToSize(text, maxWidth);
       ensureSpace(lineHeight * (lines.length + 0.5));
       doc.text(lines, marginX, y);
       y += lineHeight * (lines.length + 0.3);
@@ -240,34 +313,31 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         "No general interior notes recorded in this appraisal."
     );
 
-    if (form.rooms && form.rooms.length > 0) {
-      addLabelValue("Rooms (count)", String(form.rooms.length));
-      form.rooms.forEach((room) => {
+    if (rooms.length > 0) {
+      addLabelValue("Rooms (count)", String(rooms.length));
+
+      rooms.forEach((room) => {
         const label = room.label || room.type || "Room";
 
-        const sizeBits: string[] = [];
-        if (room.lengthMetres || room.widthMetres) {
-          sizeBits.push(
-            `${room.lengthMetres || "?"}m x ${room.widthMetres || "?"}m`
-          );
-        }
-
-        const detailBits: string[] = [];
-        if (room.flooring) detailBits.push(room.flooring);
-        if (room.heatingCooling) detailBits.push(room.heatingCooling);
-        if (room.extraFields) {
-          detailBits.push(
-            ...Object.values(room.extraFields)
-              .filter(Boolean)
-              .map((v) => String(v))
-          );
-        }
-
         const parts: string[] = [];
+
+        const s = sizeLine(room.lengthMetres, room.widthMetres);
+        if (s) parts.push(s);
+
         if (room.conditionRating)
-          parts.push(`Condition: ${room.conditionRating}/5`);
-        if (sizeBits.length) parts.push(sizeBits.join(" · "));
-        if (detailBits.length) parts.push(detailBits.join(" · "));
+          parts.push(`Condition: ${String(room.conditionRating)}/5`);
+
+        if (room.flooring) parts.push(`Flooring: ${room.flooring}`);
+        if (room.heatingCooling)
+          parts.push(`Heating/cooling: ${room.heatingCooling}`);
+
+        const extras = labelledExtrasFromConfig(
+          getRoomConfig(room.type || "other"),
+          room.extraFields,
+          { hideNo: false }
+        );
+        if (extras.length) parts.push(extras.join(" · "));
+
         if (room.specialFeatures) parts.push(room.specialFeatures);
 
         addBullet(label, parts.join(" · ") || "—");
@@ -281,33 +351,29 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         "No general exterior / landscape summary recorded in this appraisal."
     );
 
-    if (form.exteriorAreas && form.exteriorAreas.length > 0) {
+    if (exteriorAreas.length > 0) {
       addLabelValue(
         "Structures / outdoor areas (count)",
-        String(form.exteriorAreas.length)
+        String(exteriorAreas.length)
       );
-      form.exteriorAreas.forEach((area) => {
+
+      exteriorAreas.forEach((area) => {
         const label = area.label || area.type || "Structure";
 
-        const sizeBits: string[] = [];
-        if (area.lengthMetres || area.widthMetres) {
-          sizeBits.push(
-            `${area.lengthMetres || "?"}m x ${area.widthMetres || "?"}m`
-          );
-        }
-
-        const detailBits: string[] = [];
-        if (area.extraFields) {
-          detailBits.push(
-            ...Object.values(area.extraFields)
-              .filter(Boolean)
-              .map((v) => String(v))
-          );
-        }
-
         const parts: string[] = [];
-        if (sizeBits.length) parts.push(sizeBits.join(" · "));
-        if (detailBits.length) parts.push(detailBits.join(" · "));
+        const s = sizeLine(
+          area.lengthMetres,
+          area.widthMetres,
+          area.heightMetres
+        );
+        if (s) parts.push(s);
+
+        const extras = labelledExtrasFromConfig(
+          getExteriorConfig(area.type || "other"),
+          area.extraFields,
+          { hideNo: false }
+        );
+        if (extras.length) parts.push(extras.join(" · "));
 
         addBullet(label, parts.join(" · ") || "—");
       });
@@ -360,7 +426,6 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     if (nonPriceGoalLines.length > 0) {
       addParagraph(nonPriceGoalLines.join(" · "));
     }
-
     addParagraph(
       form.otherGoalNotes || "No extra notes about non-price goals recorded."
     );
@@ -419,9 +484,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
       form.targetBuyerProfile ||
         "No target buyer profile recorded in this appraisal."
     );
-    addParagraph(
-      form.headlineIdeas || "No specific headline / angle ideas recorded."
-    );
+    addParagraph(form.headlineIdeas || "No headline / angle ideas recorded.");
     addLabelValue(
       "Marketing channels",
       form.marketingChannels && form.marketingChannels.length > 0
@@ -436,12 +499,12 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     const fileBase =
       safeFilePart(form.streetAddress || form.appraisalTitle || "summary") ||
       "summary";
-
     doc.save(`appraisal-${appraisal.id}-${fileBase}.pdf`);
   };
 
   // Keys shown explicitly above (so they don't repeat in "Additional details")
   const displayedKeys = new Set<string>([
+    // Step 1
     "appraisalTitle",
     "streetAddress",
     "suburb",
@@ -451,6 +514,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "sourceOfEnquiry",
     "firstContactNotes",
 
+    // Step 2
     "propertyType",
     "yearBuilt",
     "construction",
@@ -467,14 +531,17 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "services",
     "outdoorFeatures",
 
+    // Step 3
     "overallCondition",
     "styleTheme",
     "interiorNotes",
     "rooms",
 
+    // Step 4
     "landscapeSummary",
     "exteriorAreas",
 
+    // Step 5
     "ownerNames",
     "ownerPhonePrimary",
     "ownerPhoneSecondary",
@@ -492,6 +559,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "decisionMakers",
     "decisionNotes",
 
+    // Step 6
     "primaryReason",
     "idealTimeframe",
     "motivationDetail",
@@ -504,6 +572,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "nonPriceGoals",
     "otherGoalNotes",
 
+    // Step 7
     "suggestedRangeMin",
     "suggestedRangeMax",
     "pricingStrategy",
@@ -514,6 +583,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     "proposedFee",
     "agreementLikelihood",
 
+    // Step 8
     "presentationScore",
     "presentationSummary",
     "targetBuyerProfile",
@@ -594,6 +664,7 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
         <h2 className="mb-1 text-sm font-semibold text-slate-900">
           1. Overview
         </h2>
+
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <p className="text-xs font-semibold text-slate-500">
@@ -740,45 +811,50 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
           </div>
         </div>
 
-        {form.rooms && form.rooms.length > 0 && (
+        {rooms.length > 0 && (
           <div className="mt-3 space-y-2">
             <p className="text-xs font-semibold text-slate-500">
               Rooms (summary)
             </p>
             <ul className="space-y-1 text-xs">
-              {form.rooms.map((room) => {
+              {rooms.map((room) => {
                 const label = room.label || room.type || "Room";
 
                 const sizeBits: string[] = [];
-                if (room.lengthMetres || room.widthMetres) {
-                  sizeBits.push(
-                    `${room.lengthMetres || "?"}m x ${room.widthMetres || "?"}m`
-                  );
-                }
+                const s = sizeLine(room.lengthMetres, room.widthMetres);
+                if (s) sizeBits.push(s);
 
                 const detailBits: string[] = [];
-                if (room.flooring) detailBits.push(room.flooring);
-                if (room.heatingCooling) detailBits.push(room.heatingCooling);
-                if (room.extraFields) {
+
+                if (room.conditionRating) {
                   detailBits.push(
-                    ...Object.values(room.extraFields)
-                      .filter(Boolean)
-                      .map((v) => String(v))
+                    `Condition: ${String(room.conditionRating)}/5`
                   );
                 }
+                if (room.flooring)
+                  detailBits.push(`Flooring: ${room.flooring}`);
+                if (room.heatingCooling)
+                  detailBits.push(`Heating/cooling: ${room.heatingCooling}`);
+
+                const extras = labelledExtrasFromConfig(
+                  getRoomConfig(room.type || "other"),
+                  room.extraFields,
+                  { hideNo: false }
+                );
+                if (extras.length) detailBits.push(...extras);
 
                 return (
                   <li
                     key={room.id}
                     className="rounded border border-slate-200 px-2 py-1"
                   >
-                    <div className="flex justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2">
                       <span className="font-medium text-slate-900">
                         {label}
                       </span>
-                      {room.conditionRating && (
+                      {room.type && (
                         <span className="text-[11px] text-slate-500">
-                          Condition: {room.conditionRating}/5
+                          {room.type}
                         </span>
                       )}
                     </div>
@@ -825,42 +901,46 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
           </div>
         </div>
 
-        {form.exteriorAreas && form.exteriorAreas.length > 0 && (
+        {exteriorAreas.length > 0 && (
           <div className="mt-3 space-y-2 text-xs">
             <p className="text-xs font-semibold text-slate-500">
               Structures / outdoor areas
             </p>
             <ul className="space-y-1">
-              {form.exteriorAreas.map((area) => {
+              {exteriorAreas.map((area) => {
                 const label = area.label || area.type || "Structure";
 
-                const sizeBits: string[] = [];
-                if (area.lengthMetres || area.widthMetres) {
-                  sizeBits.push(
-                    `${area.lengthMetres || "?"}m x ${area.widthMetres || "?"}m`
-                  );
-                }
-
                 const detailBits: string[] = [];
-                if (area.extraFields) {
-                  detailBits.push(
-                    ...Object.values(area.extraFields)
-                      .filter(Boolean)
-                      .map((v) => String(v))
-                  );
-                }
+                const s = sizeLine(
+                  area.lengthMetres,
+                  area.widthMetres,
+                  area.heightMetres
+                );
+                if (s) detailBits.push(s);
+
+                const extras = labelledExtrasFromConfig(
+                  getExteriorConfig(area.type || "other"),
+                  area.extraFields,
+                  { hideNo: false }
+                );
+                if (extras.length) detailBits.push(...extras);
 
                 return (
                   <li
                     key={area.id}
                     className="rounded border border-slate-200 px-2 py-1"
                   >
-                    <div className="font-medium text-slate-900">{label}</div>
-                    {(area.lengthMetres || area.widthMetres) && (
-                      <p className="mt-0.5 text-[11px] text-slate-700">
-                        {sizeBits.join(" · ")}
-                      </p>
-                    )}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-medium text-slate-900">
+                        {label}
+                      </span>
+                      {area.type && (
+                        <span className="text-[11px] text-slate-500">
+                          {area.type}
+                        </span>
+                      )}
+                    </div>
+
                     {detailBits.length > 0 && (
                       <p className="mt-0.5 text-[11px] text-slate-700">
                         {detailBits.join(" · ")}
@@ -890,16 +970,11 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
 
           <div>
             <p className="text-xs font-semibold text-slate-500">
-              Phone / email
+              Primary phone / email
             </p>
             <p className="text-slate-800">
-              {[
-                form.ownerPhonePrimary,
-                form.ownerPhoneSecondary,
-                form.ownerEmail,
-              ]
-                .filter(Boolean)
-                .join(" · ") || "—"}
+              {form.ownerPhonePrimary || "—"}
+              {form.ownerEmail ? ` · ${form.ownerEmail}` : ""}
             </p>
           </div>
 
