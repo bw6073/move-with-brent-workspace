@@ -1,4 +1,4 @@
-// app/api/open-homes/[eventId]/export_csv/route.ts
+// src/app/api/open-homes/[eventId]/export_csv/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -32,11 +32,26 @@ type AttendeeRow = {
   notes: string | null;
 };
 
+function toCsvField(value: string | boolean | null | undefined): string {
+  const v =
+    value === undefined || value === null
+      ? ""
+      : typeof value === "boolean"
+        ? value
+          ? "Yes"
+          : "No"
+        : String(value);
+
+  // Always quote; escape quotes for RFC4180-ish CSV.
+  return `"${v.replace(/"/g, '""')}"`;
+}
+
 export async function GET(
   _req: NextRequest,
-  context: { params: Promise<{ eventId: string }> }
+  { params }: { params: { eventId: string } },
 ) {
-  const { eventId } = await context.params;
+  const { eventId } = params;
+
   const supabase = await createClient();
 
   const {
@@ -60,7 +75,7 @@ export async function GET(
     console.error("Error loading open_home_event for CSV", eventError);
     return NextResponse.json(
       { error: "Failed to load open home" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -69,12 +84,17 @@ export async function GET(
   }
 
   // 2) Load the property label (scoped)
-  const { data: property } = await supabase
+  const { data: property, error: propertyError } = await supabase
     .from("properties")
     .select("street_address, suburb, state, postcode")
     .eq("id", event.property_id)
     .eq("user_id", user.id)
     .maybeSingle<PropertyRow>();
+
+  if (propertyError) {
+    // Not fatal — we can still export with a fallback label.
+    console.warn("Error loading property for CSV", propertyError);
+  }
 
   const propertyLabel = property
     ? `${property.street_address}, ${property.suburb} ${property.state} ${property.postcode}`
@@ -84,7 +104,7 @@ export async function GET(
   const { data: attendees, error: attendeesError } = await supabase
     .from("open_home_attendees")
     .select(
-      "created_at, first_name, last_name, phone, email, lead_source, lead_source_other, is_buyer, is_seller, research_visit, mailing_list_opt_in, notes"
+      "created_at, first_name, last_name, phone, email, lead_source, lead_source_other, is_buyer, is_seller, research_visit, mailing_list_opt_in, notes",
     )
     .eq("event_id", event.id)
     .eq("user_id", user.id)
@@ -95,23 +115,11 @@ export async function GET(
     console.error("Error loading attendees for CSV", attendeesError);
     return NextResponse.json(
       { error: "Failed to load attendees" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
   const rows = attendees ?? [];
-
-  const toCsvField = (value: string | boolean | null | undefined): string => {
-    const v =
-      value === undefined || value === null
-        ? ""
-        : typeof value === "boolean"
-        ? value
-          ? "Yes"
-          : "No"
-        : String(value);
-    return `"${v.replace(/"/g, '""')}"`;
-  };
 
   const headerLines = [
     `Property: ${propertyLabel}`,
@@ -137,17 +145,21 @@ export async function GET(
 
   const dataRows = rows.map((a) => {
     const created = new Date(a.created_at);
+
     const date = created.toLocaleDateString("en-AU");
-    const time = created.toLocaleTimeString("en-AU");
+    const time = created.toLocaleTimeString("en-AU", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
 
     const role =
       a.is_buyer && a.is_seller
         ? "Buyer & Seller"
         : a.is_buyer
-        ? "Buyer"
-        : a.is_seller
-        ? "Seller"
-        : "Other";
+          ? "Buyer"
+          : a.is_seller
+            ? "Seller"
+            : "Other";
 
     const lead = a.lead_source || "";
     const leadOther =
@@ -169,9 +181,10 @@ export async function GET(
     ].join(",");
   });
 
-  const csv = `${headerLines.join("\n")}\n${headers.join(",")}\n${dataRows.join(
-    "\n"
-  )}\n`;
+  const csv =
+    `${headerLines.join("\n")}\n` +
+    `${headers.join(",")}\n` +
+    `${dataRows.join("\n")}\n`;
 
   const filenameSafeTitle =
     (event.title || "open-home").toLowerCase().replace(/[^a-z0-9]+/g, "-") ||
@@ -184,6 +197,7 @@ export async function GET(
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
     },
   });
 }
