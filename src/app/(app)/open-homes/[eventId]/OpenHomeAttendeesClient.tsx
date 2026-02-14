@@ -176,7 +176,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
           <span>Total: {total}</span>
           {total > 0 && (
             <a
-              href={`/api/open-homes/${eventId}/export-csv`} // ✅ fixed
+              href={`/api/open-homes/${eventId}/export/csv`} // ✅ fixed
               className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 font-medium text-slate-700 hover:bg-slate-50"
             >
               Export CSV
