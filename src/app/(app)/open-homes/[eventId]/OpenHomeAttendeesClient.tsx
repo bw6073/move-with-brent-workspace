@@ -64,7 +64,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
             email: editEmail,
             notes: editNotes,
           }),
-        }
+        },
       );
 
       if (!res.ok) {
@@ -72,7 +72,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
         console.error(
           "Failed to update attendee",
           res.status,
-          text || "(no body)"
+          text || "(no body)",
         );
         alert("Something went wrong saving attendee changes.");
         return;
@@ -81,7 +81,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
       const { attendee } = (await res.json()) as { attendee: Attendee };
 
       setAttendees((prev) =>
-        prev.map((a) => (a.id === attendee.id ? attendee : a))
+        prev.map((a) => (a.id === attendee.id ? attendee : a)),
       );
       cancelEdit();
     } finally {
@@ -91,13 +91,13 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
 
   const deleteAttendee = async (attendee: Attendee) => {
     const ok = window.confirm(
-      `Delete attendee ${attendee.first_name} ${attendee.last_name}?`
+      `Delete attendee ${attendee.first_name} ${attendee.last_name}?`,
     );
     if (!ok) return;
 
     const res = await fetch(
       `/api/open-homes/${eventId}/attendees/${attendee.id}`,
-      { method: "DELETE" }
+      { method: "DELETE" },
     );
 
     if (!res.ok && res.status !== 204) {
@@ -122,13 +122,13 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
     try {
       const res = await fetch(
         `/api/open-homes/${eventId}/attendees/${attendee.id}/convert-to-contact`,
-        { method: "POST" }
+        { method: "POST" },
       );
 
       if (!res.ok) {
         console.error(
           "Failed to convert attendee to contact",
-          await res.text()
+          await res.text(),
         );
         alert("Something went wrong converting this attendee to a contact.");
         return;
@@ -148,8 +148,8 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
       if (data.contactId) {
         setAttendees((prev) =>
           prev.map((a) =>
-            a.id === attendee.id ? { ...a, contact_id: data.contactId! } : a
-          )
+            a.id === attendee.id ? { ...a, contact_id: data.contactId! } : a,
+          ),
         );
         alert("Contact created and linked to this attendee.");
       }
@@ -176,7 +176,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
           <span>Total: {total}</span>
           {total > 0 && (
             <a
-              href={`/api/open-homes/${eventId}/export_csv`} // ✅ fixed
+              href={`/api/open-homes/${eventId}/export-csv`} // ✅ fixed
               className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 font-medium text-slate-700 hover:bg-slate-50"
             >
               Export CSV
@@ -309,8 +309,8 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
                                 {a.contact_id
                                   ? "Linked to contact"
                                   : isConverting
-                                  ? "Converting…"
-                                  : "Convert to contact"}
+                                    ? "Converting…"
+                                    : "Convert to contact"}
                               </button>
                             </div>
                           </td>
