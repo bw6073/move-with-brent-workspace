@@ -51,6 +51,28 @@ export function TasksPageClient({
   initialShowNew = false,
 }: TasksPageClientProps) {
   const [tasks, setTasks] = useState<TaskRow[]>(initialTasks);
+  const [completing, setCompleting] = useState<number | null>(null);
+
+  const toggleComplete = async (task: TaskRow) => {
+    const nextStatus = task.status === "completed" ? "pending" : "completed";
+    setCompleting(task.id);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (res.ok) {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t))
+        );
+      } else {
+        toastError("Failed to update task.");
+      }
+    } finally {
+      setCompleting(null);
+    }
+  };
 
   // ─────────────────────────────────────
   // SIMPLE STATS
@@ -512,6 +534,7 @@ export function TasksPageClient({
                 "No contact linked";
 
               const isOverdue =
+                t.status !== "completed" &&
                 t.due_date &&
                 new Date(t.due_date).getTime() <
                   new Date().setHours(0, 0, 0, 0);
@@ -537,9 +560,30 @@ export function TasksPageClient({
                   ? `${notesPreview.slice(0, 137)}…`
                   : notesPreview;
 
+              const isDone = t.status === "completed";
+
               return (
-                <li key={t.id} className="py-3">
+                <li key={t.id} className={`py-3 transition-opacity ${isDone ? "opacity-50" : ""}`}>
                   <div className="flex items-start justify-between gap-3">
+                    {/* CHECKBOX */}
+                    <button
+                      type="button"
+                      onClick={() => toggleComplete(t)}
+                      disabled={completing === t.id}
+                      title={isDone ? "Mark as pending" : "Mark as done"}
+                      className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                        isDone
+                          ? "border-emerald-400 bg-emerald-400"
+                          : "border-slate-300 hover:border-slate-500"
+                      }`}
+                    >
+                      {isDone && (
+                        <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 10 8" fill="none">
+                          <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </button>
+
                     {/* LEFT – contact → title → notes (+ optional appraisal link) */}
                     <div className="min-w-0 flex-1">
                       {/* Contact */}

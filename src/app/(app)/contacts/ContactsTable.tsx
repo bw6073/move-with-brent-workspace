@@ -16,6 +16,34 @@ type ContactItem = {
   createdRaw?: string | null;
   created: string;
   lastContactedRaw?: string | null;
+  stage?: string | null;
+  rating?: string | null;
+};
+
+const STAGE_BADGE: Record<string, string> = {
+  new_enquiry:        "bg-blue-100 text-blue-700",
+  active_opportunity: "bg-emerald-100 text-emerald-700",
+  appraisal_booked:   "bg-indigo-100 text-indigo-700",
+  listed:             "bg-purple-100 text-purple-700",
+  sold:               "bg-slate-200 text-slate-700",
+  nurture:            "bg-amber-100 text-amber-700",
+  inactive:           "bg-slate-100 text-slate-500",
+};
+
+const STAGE_LABEL: Record<string, string> = {
+  new_enquiry:        "New",
+  active_opportunity: "Active",
+  appraisal_booked:   "Appraisal",
+  listed:             "Listed",
+  sold:               "Sold",
+  nurture:            "Nurture",
+  inactive:           "Inactive",
+};
+
+const RATING_BADGE: Record<string, string> = {
+  hot:  "bg-red-100 text-red-700",
+  warm: "bg-orange-100 text-orange-700",
+  cold: "bg-sky-100 text-sky-700",
 };
 
 type Props = {
@@ -163,6 +191,7 @@ export function ContactsTable({ contacts, initialSort }: Props) {
               <th className="py-2 px-4">Full name</th>
               <th className="py-2 px-4">Email</th>
               <th className="py-2 px-4">Phone</th>
+              <th className="py-2 px-4">Stage / Rating</th>
               <th className="py-2 px-4">Last contacted</th>
               <th className="py-2 px-4">Created</th>
               <th className="py-2 pl-4 text-right">Actions</th>
@@ -187,6 +216,21 @@ export function ContactsTable({ contacts, initialSort }: Props) {
 
                 <td className="py-2 px-4 text-slate-700">{c.email || "—"}</td>
                 <td className="py-2 px-4 text-slate-700">{c.phone || "—"}</td>
+                <td className="py-2 px-4">
+                  <div className="flex flex-wrap gap-1">
+                    {c.stage && (
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STAGE_BADGE[c.stage] ?? "bg-slate-100 text-slate-600"}`}>
+                        {STAGE_LABEL[c.stage] ?? c.stage.replace(/_/g, " ")}
+                      </span>
+                    )}
+                    {c.rating && (
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${RATING_BADGE[c.rating] ?? "bg-slate-100 text-slate-600"}`}>
+                        {c.rating}
+                      </span>
+                    )}
+                    {!c.stage && !c.rating && <span className="text-slate-300 text-xs">—</span>}
+                  </div>
+                </td>
                 <td className="py-2 px-4 text-xs">
                   {(() => {
                     const { label, cls } = lastContactedLabel(c.lastContactedRaw);

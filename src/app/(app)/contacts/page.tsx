@@ -124,6 +124,8 @@ export default async function ContactsPage({
       createdRaw,
       created,
       lastContactedRaw: lastContactedMap.get(c.id) ?? null,
+      stage: c.stage ?? null,
+      rating: c.rating ?? null,
     };
   });
 
