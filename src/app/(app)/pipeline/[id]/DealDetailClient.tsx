@@ -480,14 +480,24 @@ export default function DealDetailClient({ initialDeal, initialTasks }: Props) {
                     </span>
                   )}
                 </h2>
-                {deal.property_id && (
-                  <Link
-                    href={`/tasks?propertyId=${deal.property_id}`}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                  >
-                    All tasks →
-                  </Link>
-                )}
+                <div className="flex items-center gap-2">
+                  {deal.property_id && (
+                    <Link
+                      href={`/tasks/new?propertyId=${deal.property_id}`}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
+                    >
+                      + New task
+                    </Link>
+                  )}
+                  {deal.property_id && (
+                    <Link
+                      href={`/tasks?propertyId=${deal.property_id}`}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      All tasks →
+                    </Link>
+                  )}
+                </div>
               </div>
 
               {tasks.length === 0 ? (
