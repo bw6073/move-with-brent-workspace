@@ -496,6 +496,14 @@ export function AppraisalSummaryClient({ appraisal, form }: Props) {
     );
     addLabelValue("Follow-up date", form.followUpDate || "—");
 
+    // 9. Additional details (catch-all for fields not shown above)
+    if (additionalEntries.length > 0) {
+      addSectionTitle("9. Additional details");
+      additionalEntries.forEach(([key, value]) => {
+        addLabelValue(prettifyKey(key), formatValue(value));
+      });
+    }
+
     const fileBase =
       safeFilePart(form.streetAddress || form.appraisalTitle || "summary") ||
       "summary";
