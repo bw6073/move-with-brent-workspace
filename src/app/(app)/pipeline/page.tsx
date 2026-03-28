@@ -1,5 +1,5 @@
 // src/app/(app)/pipeline/page.tsx
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import { PipelineClient } from "./PipelineClient";
 import type { Deal } from "@/components/pipeline/PipelineBoard";
 
@@ -13,21 +13,7 @@ function normaliseOne<T>(v: MaybeArray<T>): T | null {
 }
 
 export default async function PipelinePage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return (
-      <div className="p-4">
-        <h1 className="text-xl font-semibold mb-2">Pipeline</h1>
-        <p className="text-sm text-slate-600">Unauthorised – please sign in.</p>
-      </div>
-    );
-  }
+  const { user, supabase } = await requireUser();
 
   const { data, error } = await supabase
     .from("deals")
@@ -72,7 +58,9 @@ export default async function PipelinePage() {
     `
     )
     .eq("user_id", user.id)
-    .order("updated_at", { ascending: false });
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(500);
 
   if (error) {
     console.error(

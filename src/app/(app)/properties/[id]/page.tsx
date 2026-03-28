@@ -2,8 +2,9 @@
 import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import { PropertySideTabs } from "@/components/properties/PropertySideTabs";
+import { CreateListingChecklistButton } from "@/components/properties/CreateListingChecklistButton";
 import { PropertyOpenHomesPanel } from "./PropertyOpenHomesPanel";
 import { PropertyDealsPanel } from "@/components/properties/PropertyDealsPanel";
 
@@ -95,24 +96,14 @@ export default async function PropertyDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-5xl px-6 py-10 text-sm text-slate-600">
-        Unauthorised – please sign in.
-      </div>
-    );
-  }
+  const { user, supabase } = await requireUser();
 
   const { data, error } = await supabase
     .from("properties")
     .select("*")
     .eq("id", numericId)
     .eq("user_id", user.id)
+    .is("deleted_at", null)
     .maybeSingle<PropertyRow>();
 
   if (error || !data) {
@@ -208,6 +199,8 @@ export default async function PropertyDetailPage({ params }: PageProps) {
           >
             Edit property
           </Link>
+
+          <CreateListingChecklistButton propertyId={p.id} />
 
           <Link
             href={`/appraisals/new?propertyId=${p.id}`}

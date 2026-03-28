@@ -10,9 +10,27 @@ export type PropertyItem = {
   address: string;
   suburb: string;
   status: string | null;
+  propertyType?: string | null;
   createdRaw?: string | null;
   created: string;
+  lastActivityRaw?: string | null;
 };
+
+const NOW = Date.now();
+
+function lastActivityLabel(raw: string | null | undefined): { label: string; cls: string } {
+  if (!raw) return { label: "No activity", cls: "text-slate-400" };
+  const days = Math.floor((NOW - Date.parse(raw)) / 86_400_000);
+  const label =
+    days === 0 ? "Today" :
+    days === 1 ? "Yesterday" :
+                 `${days}d ago`;
+  const cls =
+    days >= 60 ? "text-red-500 font-medium" :
+    days >= 30 ? "text-amber-500 font-medium" :
+                 "text-slate-600";
+  return { label, cls };
+}
 
 type Props = {
   properties: PropertyItem[];
@@ -26,11 +44,13 @@ type SortValue =
   | "suburb_asc"
   | "suburb_desc"
   | "status_asc"
-  | "status_desc";
+  | "status_desc"
+  | "last_activity_asc";
 
 const SORT_OPTIONS: { label: string; value: SortValue }[] = [
   { label: "Recently created", value: "created_desc" },
   { label: "Oldest first", value: "created_asc" },
+  { label: "Needs attention (oldest activity)", value: "last_activity_asc" },
   { label: "Address A–Z", value: "address_asc" },
   { label: "Address Z–A", value: "address_desc" },
   { label: "Suburb A–Z", value: "suburb_asc" },
@@ -162,6 +182,12 @@ export function PropertiesTable({ properties }: Props) {
           const bTime = b.createdRaw ? Date.parse(b.createdRaw) : 0;
           return aTime - bTime;
         }
+        case "last_activity_asc": {
+          // No activity sorts first (most at-risk)
+          const aTime = a.lastActivityRaw ? Date.parse(a.lastActivityRaw) : 0;
+          const bTime = b.lastActivityRaw ? Date.parse(b.lastActivityRaw) : 0;
+          return aTime - bTime;
+        }
         case "created_desc":
         default: {
           const aTime = a.createdRaw ? Date.parse(a.createdRaw) : 0;
@@ -235,7 +261,9 @@ export function PropertiesTable({ properties }: Props) {
               <th className="py-2 pr-4">#</th>
               <th className="py-2 px-4">Address</th>
               <th className="py-2 px-4">Suburb</th>
+              <th className="py-2 px-4">Type</th>
               <th className="py-2 px-4">Status</th>
+              <th className="py-2 px-4">Last activity</th>
               <th className="py-2 px-4">Created</th>
               <th className="py-2 pl-4 text-right">Actions</th>
             </tr>
@@ -259,7 +287,11 @@ export function PropertiesTable({ properties }: Props) {
                 </td>
                 <td className="py-2 px-4 text-slate-700">{p.suburb || "—"}</td>
 
-                {/* 🔹 Status badge */}
+                <td className="py-2 px-4 text-slate-600 text-xs">
+                  {p.propertyType ? p.propertyType.replace(/_/g, " ") : "—"}
+                </td>
+
+                {/* Status badge */}
                 <td className="py-2 px-4">
                   {p.status ? (
                     <span
@@ -272,6 +304,13 @@ export function PropertiesTable({ properties }: Props) {
                   ) : (
                     "—"
                   )}
+                </td>
+
+                <td className="py-2 px-4 text-xs">
+                  {(() => {
+                    const { label, cls } = lastActivityLabel(p.lastActivityRaw);
+                    return <span className={cls}>{label}</span>;
+                  })()}
                 </td>
 
                 <td className="py-2 px-4 text-slate-700">{p.created}</td>

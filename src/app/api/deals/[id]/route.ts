@@ -108,6 +108,14 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     );
   }
 
+  // Load current stage before update so we can detect stage transitions
+  const { data: currentDeal } = await supabase
+    .from("deals")
+    .select("stage, property_id, contact_id, title")
+    .eq("id", dealId)
+    .eq("user_id", user.id)
+    .single();
+
   const { data, error } = await supabase
     .from("deals")
     .update(updates)
@@ -123,6 +131,49 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
   if (!data) {
     return NextResponse.json({ error: "Deal not found" }, { status: 404 });
+  }
+
+  // Auto-create tasks on stage transitions
+  const newStage = updates.stage as string | undefined;
+  const prevStage = currentDeal?.stage as string | undefined;
+  if (newStage && newStage !== prevStage) {
+    const dealLabel = currentDeal?.title ?? `Deal #${dealId}`;
+    const autoTasks: { title: string; days: number; priority: string }[] = [];
+
+    if (newStage === "under_offer") {
+      autoTasks.push(
+        { title: `${dealLabel} – Confirm contract exchange`, days: 1, priority: "high" },
+        { title: `${dealLabel} – Notify all parties`, days: 1, priority: "high" },
+        { title: `${dealLabel} – Arrange building & pest inspection`, days: 5, priority: "normal" },
+        { title: `${dealLabel} – Follow up finance approval`, days: 14, priority: "normal" },
+      );
+    } else if (newStage === "sold") {
+      autoTasks.push(
+        { title: `${dealLabel} – Confirm settlement date`, days: 1, priority: "high" },
+        { title: `${dealLabel} – Prepare settlement documents`, days: 7, priority: "high" },
+        { title: `${dealLabel} – Arrange final inspection`, days: 14, priority: "normal" },
+        { title: `${dealLabel} – Send sold announcement to database`, days: 2, priority: "normal" },
+        { title: `${dealLabel} – Request vendor/buyer testimonial`, days: 30, priority: "low" },
+      );
+    }
+
+    if (autoTasks.length > 0) {
+      const now = new Date();
+      const taskInserts = autoTasks.map((t) => {
+        const due = new Date(now);
+        due.setDate(due.getDate() + t.days);
+        return {
+          user_id: user.id,
+          title: t.title,
+          status: "pending",
+          priority: t.priority,
+          related_property_id: currentDeal?.property_id ?? null,
+          related_contact_id: currentDeal?.contact_id ?? null,
+          due_date: due.toISOString().slice(0, 10),
+        };
+      });
+      await supabase.from("tasks").insert(taskInserts);
+    }
   }
 
   return NextResponse.json({ deal: data });

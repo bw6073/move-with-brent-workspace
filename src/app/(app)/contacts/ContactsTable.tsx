@@ -3,6 +3,7 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import { toastSuccess, toastError } from "@/lib/toast";
 
 const PAGE_SIZE = 10;
 
@@ -87,6 +88,33 @@ export function ContactsTable({ contacts, initialSort }: Props) {
     (initialSort as SortValue) ?? "created_desc"
   );
   const [page, setPage] = useState<number>(1);
+  const [loggingCallId, setLoggingCallId] = useState<number | null>(null);
+  // map of contact id → ISO timestamp of last logged activity (optimistic)
+  const [lastActivityOverrides, setLastActivityOverrides] = useState<Record<number, string>>({});
+
+  const logCall = async (contactId: number) => {
+    setLoggingCallId(contactId);
+    try {
+      const res = await fetch("/api/contact-activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contact_id: contactId,
+          activity_type: "call",
+          direction: "outbound",
+          activity_at: new Date().toISOString(),
+        }),
+      });
+      if (res.ok) {
+        setLastActivityOverrides((prev) => ({ ...prev, [contactId]: new Date().toISOString() }));
+        toastSuccess("Call logged.");
+      } else {
+        toastError("Failed to log call.");
+      }
+    } finally {
+      setLoggingCallId(null);
+    }
+  };
 
   const { pageContacts, totalCount, fromIndex, totalPages } = useMemo(() => {
     const sorted = [...contacts].sort((a, b) => {
@@ -233,7 +261,8 @@ export function ContactsTable({ contacts, initialSort }: Props) {
                 </td>
                 <td className="py-2 px-4 text-xs">
                   {(() => {
-                    const { label, cls } = lastContactedLabel(c.lastContactedRaw);
+                    const raw = lastActivityOverrides[c.id] ?? c.lastContactedRaw;
+                    const { label, cls } = lastContactedLabel(raw);
                     return <span className={cls}>{label}</span>;
                   })()}
                 </td>
@@ -241,6 +270,14 @@ export function ContactsTable({ contacts, initialSort }: Props) {
 
                 <td className="py-2 pl-4 text-right">
                   <div className="flex justify-end gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => logCall(c.id)}
+                      disabled={loggingCallId === c.id}
+                      className="rounded-full border border-emerald-300 px-3 py-1 text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
+                    >
+                      {loggingCallId === c.id ? "Logging…" : "Log call"}
+                    </button>
                     <Link
                       href={`/contacts/${c.id}`}
                       className="rounded-full border border-slate-300 px-3 py-1 hover:bg-slate-100"

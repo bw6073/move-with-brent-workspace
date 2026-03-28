@@ -3,6 +3,7 @@ import React from "react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/requireUser";
 import { TasksFilterBar } from "./TasksFilterBar";
+import { TasksListClient, type RichTask } from "@/components/tasks/TasksListClient";
 
 type TaskRow = {
   id: number;
@@ -14,17 +15,6 @@ type TaskRow = {
   related_contact_id: number | null;
   related_property_id: number | null;
   created_at: string | null;
-};
-
-const formatDate = (iso: string | null) => {
-  if (!iso) return "No due date";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "No due date";
-  return d.toLocaleDateString("en-AU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
 };
 
 export default async function TasksPage({
@@ -159,69 +149,22 @@ export default async function TasksPage({
     }
   }
 
-  const typeBadge = (type: string | null) => {
-    if (!type) return null;
-    const label = type.replace("_", " ");
-    return (
-      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-        {label}
-      </span>
-    );
-  };
-
-  const priorityBadge = (priority: string | null) => {
-    if (!priority || priority === "normal") return null;
-    const cls =
-      priority === "high"
-        ? "bg-red-100 text-red-700"
-        : "bg-slate-100 text-slate-700";
-
-    return (
-      <span
-        className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${cls}`}
-      >
-        {priority}
-      </span>
-    );
-  };
-
-  const linkPill = (t: TaskRow) => {
-    if (t.related_contact_id) {
-      const label =
-        contactMap.get(t.related_contact_id) ||
-        `Contact #${t.related_contact_id}`;
-
-      return (
-        <Link
-          href={`/contacts/${t.related_contact_id}`}
-          className="max-w-[200px] truncate rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-        >
-          👤 {label}
-        </Link>
-      );
-    }
-
-    if (t.related_property_id) {
-      const label =
-        propertyMap.get(t.related_property_id) ||
-        `Property #${t.related_property_id}`;
-
-      return (
-        <Link
-          href={`/properties/${t.related_property_id}`}
-          className="max-w-[230px] truncate rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-        >
-          🏡 {label}
-        </Link>
-      );
-    }
-
-    return (
-      <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-400">
-        Not linked
-      </span>
-    );
-  };
+  const richTasks: RichTask[] = tasks.map((t) => ({
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    priority: t.priority,
+    task_type: t.task_type,
+    due_date: t.due_date,
+    contactLabel: t.related_contact_id
+      ? (contactMap.get(t.related_contact_id) ?? `Contact #${t.related_contact_id}`)
+      : null,
+    contactId: t.related_contact_id,
+    propertyLabel: t.related_property_id
+      ? (propertyMap.get(t.related_property_id) ?? `Property #${t.related_property_id}`)
+      : null,
+    propertyId: t.related_property_id,
+  }));
 
   return (
     <div className="space-y-6">
@@ -294,62 +237,7 @@ export default async function TasksPage({
 
       {/* TASK LIST */}
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        {tasks.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            No tasks yet. Create one from a contact, a property or the button
-            above.
-          </p>
-        ) : (
-          <ul className="divide-y divide-slate-100 text-sm">
-            {tasks.map((t) => {
-              const isCompleted = t.status === "completed";
-              const isOverdue =
-                !isCompleted &&
-                t.due_date &&
-                new Date(t.due_date).getTime() <
-                  new Date().setHours(0, 0, 0, 0);
-
-              return (
-                <li
-                  key={t.id}
-                  className="flex items-start justify-between gap-3 py-3"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {typeBadge(t.task_type)}
-                      {priorityBadge(t.priority)}
-                      <Link
-                        href={`/tasks/${t.id}/edit`}
-                        className="truncate font-medium text-slate-900 hover:underline"
-                      >
-                        {t.title || "Untitled task"}
-                      </Link>
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      Due:{" "}
-                      <span className={isOverdue ? "text-red-600" : ""}>
-                        {t.due_date ? formatDate(t.due_date) : "No due date"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-1">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                        isCompleted
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-slate-100 text-slate-700"
-                      }`}
-                    >
-                      {t.status || "pending"}
-                    </span>
-                    {linkPill(t)}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <TasksListClient initialTasks={richTasks} />
       </section>
     </div>
   );

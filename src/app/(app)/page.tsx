@@ -286,6 +286,32 @@ export default async function HomePage() {
   );
   const coldContactCount = Math.max(0, totalContacts - recentlyContactedIds.size);
 
+  // ── STALE ACTIVE LISTINGS ─────────────
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const [{ data: activeListingsData }, { data: recentPropertyActivityData }] = await Promise.all([
+    supabase
+      .from("properties")
+      .select("id, street_address, suburb")
+      .eq("user_id", user.id)
+      .in("market_status", ["for_sale", "pre_market"])
+      .is("deleted_at", null)
+      .limit(100),
+    supabase
+      .from("property_activities")
+      .select("property_id")
+      .eq("user_id", user.id)
+      .gte("activity_at", sevenDaysAgo.toISOString()),
+  ]);
+
+  const recentPropertyIds = new Set(
+    (recentPropertyActivityData ?? []).map((a: any) => a.property_id)
+  );
+  const staleListings = (activeListingsData ?? []).filter(
+    (p: any) => !recentPropertyIds.has(p.id)
+  );
+
   // ── OPEN HOMES SNAPSHOT ────────────────
   const { data: openHomeData, error: openHomeError } = await supabase
     .from("open_home_events")
@@ -375,7 +401,7 @@ export default async function HomePage() {
       </header>
 
       {/* TODAY'S FOCUS */}
-      {(overdueCount > 0 || todayCount > 0 || coldContactCount > 0) && (
+      {(overdueCount > 0 || todayCount > 0 || coldContactCount > 0 || staleListings.length > 0) && (
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <h2 className="mb-3 text-sm font-semibold text-amber-900">Today's focus</h2>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -472,6 +498,37 @@ export default async function HomePage() {
             </div>
 
           </div>
+
+          {staleListings.length > 0 && (
+            <div className="mt-3 border-t border-amber-200 pt-3">
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                Stale listings ({staleListings.length}) — no activity in 7+ days
+              </p>
+              <ul className="flex flex-wrap gap-2">
+                {staleListings.slice(0, 8).map((p: any) => (
+                  <li key={p.id}>
+                    <Link
+                      href={`/properties/${p.id}`}
+                      className="inline-flex items-center rounded-full border border-amber-300 bg-white px-2.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
+                    >
+                      {p.street_address || `Property #${p.id}`}
+                      {p.suburb ? `, ${p.suburb}` : ""}
+                    </Link>
+                  </li>
+                ))}
+                {staleListings.length > 8 && (
+                  <li>
+                    <Link
+                      href="/properties?status=for_sale"
+                      className="text-xs text-amber-700 hover:underline"
+                    >
+                      +{staleListings.length - 8} more →
+                    </Link>
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 

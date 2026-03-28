@@ -104,14 +104,25 @@ export function ContactsFilterBar({
 
       {hasFilters && (
         <button
-          onClick={() =>
-            router.push(pathname)
-          }
+          onClick={() => router.push(pathname)}
           className="text-xs text-slate-500 hover:text-slate-700 underline"
         >
           Clear filters
         </button>
       )}
+
+      <a
+        href={`/api/contacts/export?${new URLSearchParams({
+          ...(currentStage ? { stage: currentStage } : {}),
+          ...(currentRating ? { rating: currentRating } : {}),
+          ...(isBuyer ? { is_buyer: "true" } : {}),
+          ...(isSeller ? { is_seller: "true" } : {}),
+        }).toString()}`}
+        download
+        className="ml-auto rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+      >
+        Export CSV
+      </a>
     </div>
   );
 }

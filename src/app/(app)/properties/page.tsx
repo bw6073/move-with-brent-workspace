@@ -29,7 +29,22 @@ export default async function PropertiesPage({
   if (filters.status) query = query.eq("market_status", filters.status);
   if (filters.property_type) query = query.eq("property_type", filters.property_type);
 
-  const { data, error } = await query;
+  const [{ data, error }, { data: activityData }] = await Promise.all([
+    query,
+    supabase
+      .from("property_activities")
+      .select("property_id, activity_at")
+      .eq("user_id", user.id)
+      .order("activity_at", { ascending: false })
+      .limit(2000),
+  ]);
+
+  const lastActivityMap = new Map<number, string>();
+  for (const a of activityData ?? []) {
+    if (!lastActivityMap.has(a.property_id)) {
+      lastActivityMap.set(a.property_id, a.activity_at);
+    }
+  }
 
   if (error) {
     console.error("Failed to load properties:", error);
@@ -128,8 +143,10 @@ export default async function PropertiesPage({
       address,
       suburb,
       status,
+      propertyType: row.property_type ?? null,
       createdRaw,
       created,
+      lastActivityRaw: lastActivityMap.get(row.id) ?? null,
     };
   });
 
