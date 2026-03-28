@@ -88,6 +88,7 @@ export function ContactsTable({ contacts, initialSort }: Props) {
     (initialSort as SortValue) ?? "created_desc"
   );
   const [page, setPage] = useState<number>(1);
+  const [search, setSearch] = useState("");
   const [loggingCallId, setLoggingCallId] = useState<number | null>(null);
   // map of contact id → ISO timestamp of last logged activity (optimistic)
   const [lastActivityOverrides, setLastActivityOverrides] = useState<Record<number, string>>({});
@@ -117,7 +118,14 @@ export function ContactsTable({ contacts, initialSort }: Props) {
   };
 
   const { pageContacts, totalCount, fromIndex, totalPages } = useMemo(() => {
-    const sorted = [...contacts].sort((a, b) => {
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? contacts.filter((c) =>
+          [c.fullName, c.email, c.phone].some((s) => s?.toLowerCase().includes(q))
+        )
+      : contacts;
+
+    const sorted = [...filtered].sort((a, b) => {
       const aLast = (a.lastName || "").toLowerCase();
       const bLast = (b.lastName || "").toLowerCase();
       const aFirst = (a.firstName || "").toLowerCase();
@@ -171,10 +179,15 @@ export function ContactsTable({ contacts, initialSort }: Props) {
       fromIndex,
       totalPages,
     };
-  }, [contacts, sort, page]);
+  }, [contacts, sort, page, search]);
 
   const handleChangeSort = (value: SortValue) => {
     setSort(value);
+    setPage(1);
+  };
+
+  const handleSearch = (value: string) => {
+    setSearch(value);
     setPage(1);
   };
 
@@ -187,12 +200,20 @@ export function ContactsTable({ contacts, initialSort }: Props) {
 
   return (
     <>
-      {/* SORT + SUMMARY */}
+      {/* SEARCH + SORT + SUMMARY */}
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-slate-500 sm:text-sm">
-          {totalCount} contact{totalCount === 1 ? "" : "s"} · Page {page} of{" "}
-          {totalPages}
-        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search name, email or phone…"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs sm:text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 w-56"
+          />
+          <p className="text-xs text-slate-500">
+            {totalCount} contact{totalCount === 1 ? "" : "s"} · Page {page}/{totalPages}
+          </p>
+        </div>
 
         <div className="flex items-center gap-2 text-xs sm:text-sm">
           <span className="text-slate-500">Sort by</span>
