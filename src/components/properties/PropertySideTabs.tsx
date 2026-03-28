@@ -7,12 +7,13 @@ import { PropertyContactsPanel } from "./PropertyContactsPanel";
 import { PropertyTasksPanel } from "./PropertyTasksPanel";
 import { PropertyTimelinePanel } from "./PropertyTimelinePanel";
 import { PropertyFilesPanel } from "./PropertyFilesPanel";
+import { PropertyActivityCard } from "./PropertyActivityCard";
 
 type Props = {
   propertyId: number;
 };
 
-const TABS = ["Timeline", "Appraisals", "Contacts", "Tasks", "Files"] as const;
+const TABS = ["Timeline", "Activity", "Appraisals", "Contacts", "Tasks", "Files"] as const;
 type TabKey = (typeof TABS)[number];
 
 export function PropertySideTabs({ propertyId }: Props) {
@@ -55,6 +56,9 @@ export function PropertySideTabs({ propertyId }: Props) {
           <PropertyTasksPanel propertyId={propertyId} />
         )}
 
+        {activeTab === "Activity" && (
+          <PropertyActivityCard propertyId={propertyId} />
+        )}
         {activeTab === "Files" && (
           <PropertyFilesPanel propertyId={propertyId} />
         )}

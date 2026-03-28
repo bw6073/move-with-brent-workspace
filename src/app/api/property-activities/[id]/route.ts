@@ -1,4 +1,4 @@
-// src/app/api/contact-activities/[id]/route.ts
+// src/app/api/property-activities/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/api/requireUser";
 
@@ -12,38 +12,26 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
     const activityId = Number(id);
 
     if (!id || Number.isNaN(activityId)) {
-      return NextResponse.json(
-        { error: "Invalid activity ID", rawId: id ?? null },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid activity ID" }, { status: 400 });
     }
 
     const { user, supabase, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const { error } = await supabase
-      .from("contact_activities")
+      .from("property_activities")
       .delete()
       .eq("id", activityId)
       .eq("user_id", user.id);
 
     if (error) {
-      console.error(
-        "Failed to delete contact activity",
-        JSON.stringify(error, null, 2)
-      );
-      return NextResponse.json(
-        { error: "Failed to delete activity", supabaseError: error },
-        { status: 500 }
-      );
+      console.error("[DELETE /api/property-activities/[id]]", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("Unexpected error in DELETE /contact-activities/[id]", err);
-    return NextResponse.json(
-      { error: "Unexpected server error" },
-      { status: 500 }
-    );
+    console.error("[DELETE /api/property-activities/[id]] unexpected", err);
+    return NextResponse.json({ error: "Unexpected server error" }, { status: 500 });
   }
 }
