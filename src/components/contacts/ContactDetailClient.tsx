@@ -12,6 +12,7 @@ import { ContactTasksCard } from "./ContactTasksCard";
 import { ContactLinkedContactsCard } from "./ContactLinkedContactsCard";
 import { ContactTimelineCard } from "./ContactTimelineCard";
 import { CreateDealButton } from "@/components/pipeline/CreateDealButton";
+import { SendEmailModal } from "./SendEmailModal";
 
 type Props = {
   initialContact: Contact;
@@ -55,6 +56,8 @@ export default function ContactDetailClient({ initialContact }: Props) {
   const [contact, setContact] = useState<Contact>(initialContact);
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<RightTab>("timeline");
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailSentAt, setEmailSentAt] = useState<number>(0);
 
   const handleContactUpdated = (updated: Contact) => {
     setContact(updated);
@@ -97,18 +100,29 @@ export default function ContactDetailClient({ initialContact }: Props) {
                 <h2 className="text-sm font-semibold text-slate-900">
                   Contact details
                 </h2>
-                <CreateDealButton
-                  contactId={contact.id}
-                  defaultTitle={displayName}
-                  defaultStage="lead"
-                />
-                <button
-                  type="button"
-                  onClick={() => setEditing(true)}
-                  className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                >
-                  Edit contact
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <CreateDealButton
+                    contactId={contact.id}
+                    defaultTitle={displayName}
+                    defaultStage="lead"
+                  />
+                  {contact.email && (
+                    <button
+                      type="button"
+                      onClick={() => setEmailOpen(true)}
+                      className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                    >
+                      Send email
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    Edit
+                  </button>
+                </div>
               </div>
 
               <dl className="space-y-2 text-sm text-slate-700">
@@ -310,6 +324,20 @@ export default function ContactDetailClient({ initialContact }: Props) {
           </div>
         </section>
       </div>
+
+      {emailOpen && contact.email && (
+        <SendEmailModal
+          contactId={contact.id}
+          toEmail={contact.email}
+          toName={getDisplayName(contact)}
+          onClose={() => setEmailOpen(false)}
+          onSent={() => {
+            setEmailOpen(false);
+            setEmailSentAt(Date.now());
+            setActiveTab("activity");
+          }}
+        />
+      )}
     </div>
   );
 }
