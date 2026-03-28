@@ -50,6 +50,7 @@ export const AppShell: React.FC<Props> = ({ children }) => {
     { href: "/pipeline", label: "Pipeline" },
     { href: "/tasks", label: "Tasks" },
     { href: "/open-homes", label: "Open Homes" },
+    { href: "/reports", label: "Reports" },
   ];
 
   const loadUserLabel = useCallback(async () => {
