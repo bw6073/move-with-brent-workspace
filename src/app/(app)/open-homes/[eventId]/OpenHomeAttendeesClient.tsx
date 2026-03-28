@@ -35,6 +35,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
   const [editEmail, setEditEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  const [followingUp, setFollowingUp] = useState(false);
 
   const startEdit = (attendee: Attendee) => {
     setEditingId(attendee.id);
@@ -159,6 +160,30 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
     }
   };
 
+  const followUpAll = async () => {
+    const linkedCount = attendees.filter((a) => a.contact_id).length;
+    if (linkedCount === 0) {
+      toastInfo("No attendees are linked to contacts yet. Use \"Convert to contact\" first.");
+      return;
+    }
+    setFollowingUp(true);
+    try {
+      const res = await fetch(`/api/open-homes/${eventId}/follow-up`, { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toastError(json?.error ?? "Failed to create follow-up tasks.");
+        return;
+      }
+      if (json.created === 0) {
+        toastInfo(json.message ?? "No tasks created.");
+      } else {
+        toastSuccess(`${json.created} follow-up task${json.created === 1 ? "" : "s"} created.`);
+      }
+    } finally {
+      setFollowingUp(false);
+    }
+  };
+
   const roleLabel = (a: Attendee) => {
     if (a.is_buyer && a.is_seller) return "Buyer & seller";
     if (a.is_buyer) return "Buyer";
@@ -173,15 +198,25 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-slate-900">Attendees</h2>
 
-        <div className="flex items-center gap-3 text-xs text-slate-500">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
           <span>Total: {total}</span>
           {total > 0 && (
-            <a
-              href={`/api/open-homes/${eventId}/export/csv`}
-              className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Export CSV
-            </a>
+            <>
+              <button
+                type="button"
+                onClick={followUpAll}
+                disabled={followingUp}
+                className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                {followingUp ? "Creating tasks…" : "Follow up all"}
+              </button>
+              <a
+                href={`/api/open-homes/${eventId}/export/csv`}
+                className="inline-flex items-center rounded-full border border-slate-300 px-3 py-1 font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Export CSV
+              </a>
+            </>
           )}
         </div>
       </div>
