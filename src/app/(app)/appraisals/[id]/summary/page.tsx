@@ -2,7 +2,7 @@
 import React from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import {
   EMPTY_FORM,
   type FormState,
@@ -35,20 +35,7 @@ export default async function AppraisalSummaryPage(props: PageProps) {
 
   if (!appraisalId) notFound();
 
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return (
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <p className="text-sm text-slate-600">You must be signed in.</p>
-      </div>
-    );
-  }
+  const { user, supabase } = await requireUser();
 
   const { data, error } = await supabase
     .from("appraisals")

@@ -198,18 +198,42 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
                 void handleDropOnColumn(column.id);
               }}
             >
-              <div
-                className={`px-3 py-2 border-b flex items-center justify-between rounded-t-xl ${style.header}`}
-              >
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-800">
-                  {column.label}
-                </span>
-                <span
-                  className={`text-xs font-medium px-2 py-0.5 rounded-full ${style.badge}`}
-                >
-                  {column.deals.length}
-                </span>
-              </div>
+              {(() => {
+                const totalLow = column.deals.reduce(
+                  (sum, d) => sum + (Number(d.estimated_value_low) || 0), 0
+                );
+                const totalHigh = column.deals.reduce(
+                  (sum, d) => sum + (Number(d.estimated_value_high) || 0), 0
+                );
+                const valueDisplay =
+                  totalHigh > 0
+                    ? `$${(totalLow / 1_000_000).toFixed(1)}m–$${(totalHigh / 1_000_000).toFixed(1)}m`
+                    : totalLow > 0
+                    ? `$${(totalLow / 1_000_000).toFixed(1)}m`
+                    : null;
+
+                return (
+                  <div
+                    className={`px-3 py-2 border-b rounded-t-xl ${style.header}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-800">
+                        {column.label}
+                      </span>
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${style.badge}`}
+                      >
+                        {column.deals.length}
+                      </span>
+                    </div>
+                    {valueDisplay && (
+                      <p className="mt-0.5 text-[11px] text-slate-500 font-medium">
+                        {valueDisplay}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="flex-1 space-y-2 p-2 overflow-y-auto max-h-[480px]">
                 {column.deals.map((deal) => {
