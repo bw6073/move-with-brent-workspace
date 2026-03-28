@@ -3,6 +3,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toastError } from "@/lib/toast";
 
 export function SyncAppraisalCalendarButton({
   appraisalId,
@@ -21,7 +22,7 @@ export function SyncAppraisalCalendarButton({
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(json?.error || "Failed to sync to Google Calendar.");
+        toastError(json?.error || "Failed to sync to Google Calendar.");
         return;
       }
 

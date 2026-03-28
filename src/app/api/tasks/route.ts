@@ -1,25 +1,21 @@
 // src/app/api/tasks/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
+import { TaskCreateSchema } from "@/lib/schemas/task";
 
 // GET /api/tasks
 // - /api/tasks?propertyId=123 => tasks just for that property
 // - /api/tasks                => all tasks for current user
 export async function GET(req: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const url = new URL(req.url);
     const propertyIdParam = url.searchParams.get("propertyId");
     const contactIdParam = url.searchParams.get("contactId");
+    const statusParam = url.searchParams.get("status");
+    const priorityParam = url.searchParams.get("priority");
 
     const numericPropertyId = propertyIdParam ? Number(propertyIdParam) : null;
     const numericContactId = contactIdParam ? Number(contactIdParam) : null;
@@ -28,8 +24,13 @@ export async function GET(req: Request) {
       .from("tasks")
       .select("*")
       .eq("user_id", user.id)
+      .is("deleted_at", null)
       .order("due_date", { ascending: true })
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(500);
+
+    if (statusParam) query = query.eq("status", statusParam);
+    if (priorityParam) query = query.eq("priority", priorityParam);
 
     if (numericPropertyId && !Number.isNaN(numericPropertyId)) {
       query = query.eq("related_property_id", numericPropertyId);
@@ -79,21 +80,21 @@ export async function POST(req: Request) {
     task_type,
   } = body ?? {};
 
+  const parsed = TaskCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Validation failed", issues: parsed.error.flatten() },
+      { status: 400 }
+    );
+  }
+
   if (!title || typeof title !== "string" || !title.trim()) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
   }
 
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const insertPayload: any = {
       user_id: user.id,

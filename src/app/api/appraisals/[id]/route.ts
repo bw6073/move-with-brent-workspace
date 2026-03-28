@@ -1,6 +1,6 @@
 // src/app/api/appraisals/[id]/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 
 export const dynamic = "force-dynamic";
 
@@ -26,22 +26,6 @@ type PropertyLookupInput = {
   state?: unknown;
   propertyType?: unknown;
 };
-
-async function requireUser(supabase: any) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return {
-      user: null,
-      response: NextResponse.json({ error: "Not signed in" }, { status: 401 }),
-    };
-  }
-
-  return { user, response: null };
-}
 
 function parseId(id: string) {
   const n = Number(id);
@@ -154,9 +138,8 @@ export async function GET(_req: Request, context: RouteContext) {
     );
   }
 
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const { data, error } = await supabase
     .from("appraisals")
@@ -196,9 +179,8 @@ export async function PUT(req: Request, context: RouteContext) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const formData = (body as any)?.data ?? null;
   const status = (body as any)?.status ?? "DRAFT";
@@ -314,9 +296,8 @@ export async function DELETE(_req: Request, context: RouteContext) {
     );
   }
 
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const { error: deleteLinksError } = await supabase
     .from("appraisal_contacts")

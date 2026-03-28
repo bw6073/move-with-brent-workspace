@@ -1,6 +1,6 @@
 // src/app/api/tasks/[id]/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 
 type RouteContext = {
   params: Promise<{ id: string }>; // Next 16: params is a Promise
@@ -19,16 +19,8 @@ export async function GET(_req: Request, context: RouteContext) {
   }
 
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const { data, error } = await supabase
       .from("tasks")
@@ -89,16 +81,8 @@ export async function PUT(req: Request, context: RouteContext) {
   } = body ?? {};
 
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const updatePayload: any = {};
 
@@ -173,20 +157,12 @@ export async function DELETE(_req: Request, context: RouteContext) {
   }
 
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const { error } = await supabase
       .from("tasks")
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq("id", numericId)
       .eq("user_id", user.id);
 

@@ -1,6 +1,6 @@
 // src/app/api/open-homes/[eventId]/attendees/[attendeeId]/convert-to-contact/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 
 type RouteContext = {
   params: Promise<{
@@ -68,17 +68,8 @@ async function ensureOwnedEvent(
 export async function POST(_req: NextRequest, context: RouteContext) {
   try {
     const { eventId, attendeeId } = await context.params;
-    const supabase = await createClient();
-
-    // ───────────────── AUTH ─────────────────
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     // ✅ Ensure the event is owned by this user (defence in depth)
     const owned = await ensureOwnedEvent(supabase, eventId, user.id);

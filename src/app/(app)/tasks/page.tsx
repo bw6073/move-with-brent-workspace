@@ -1,7 +1,8 @@
-// src/app/tasks/page.tsx
+// src/app/(app)/tasks/page.tsx
 import React from "react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/requireUser";
+import { TasksFilterBar } from "./TasksFilterBar";
 
 type TaskRow = {
   id: number;
@@ -26,11 +27,16 @@ const formatDate = (iso: string | null) => {
   });
 };
 
-export default async function TasksPage() {
+export default async function TasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string; priority?: string }>;
+}) {
   const { user, supabase } = await requireUser();
+  const filters = await searchParams;
 
   // 1) Load raw tasks
-  const { data, error } = await supabase
+  let tasksQuery = supabase
     .from("tasks")
     .select(
       `
@@ -46,8 +52,15 @@ export default async function TasksPage() {
     `
     )
     .eq("user_id", user.id)
+    .is("deleted_at", null)
     .order("due_date", { ascending: true, nullsFirst: true })
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(500);
+
+  if (filters.status) tasksQuery = tasksQuery.eq("status", filters.status);
+  if (filters.priority) tasksQuery = tasksQuery.eq("priority", filters.priority);
+
+  const { data, error } = await tasksQuery;
 
   if (error) {
     console.error("[TasksPage] supabase error", error);
@@ -228,6 +241,12 @@ export default async function TasksPage() {
           + New task
         </Link>
       </header>
+
+      {/* FILTER BAR */}
+      <TasksFilterBar
+        currentStatus={filters.status ?? ""}
+        currentPriority={filters.priority ?? ""}
+      />
 
       {/* STATS STRIP */}
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

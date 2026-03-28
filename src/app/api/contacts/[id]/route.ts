@@ -1,6 +1,6 @@
 // src/app/api/contacts/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 
 type RouteContext = {
   // Next 16: params is a Promise
@@ -22,18 +22,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       );
     }
 
-    const supabase = await createClient();
-
-    // Auth user (so RLS passes)
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      console.error("No authenticated user in PATCH /contacts/[id]", userError);
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const body = await req.json().catch(() => null);
     if (!body) {
@@ -139,20 +129,8 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
       );
     }
 
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      console.error(
-        "No authenticated user in DELETE /contacts/[id]",
-        userError
-      );
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     // 1) Unlink any open_home_attendees that reference this contact
     const { error: attendeesError } = await supabase
@@ -174,10 +152,10 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
       );
     }
 
-    // 2) Delete the contact itself
+    // 2) Soft-delete the contact
     const { error: deleteError } = await supabase
       .from("contacts")
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq("id", contactId)
       .eq("user_id", user.id);
 

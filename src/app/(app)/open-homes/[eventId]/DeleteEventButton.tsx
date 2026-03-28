@@ -3,6 +3,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toastError } from "@/lib/toast";
 
 export function DeleteEventButton({ eventId }: { eventId: string }) {
   const router = useRouter();
@@ -22,7 +23,7 @@ export function DeleteEventButton({ eventId }: { eventId: string }) {
 
       if (!res.ok && res.status !== 204) {
         console.error("Failed to delete event", await res.text());
-        alert("Something went wrong deleting the open home.");
+        toastError("Something went wrong deleting the open home.");
         return;
       }
 

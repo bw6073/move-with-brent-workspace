@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import { format } from "date-fns";
+import { toastSuccess, toastError, toastInfo } from "@/lib/toast";
 
 export type Attendee = {
   id: string;
@@ -74,7 +75,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
           res.status,
           text || "(no body)",
         );
-        alert("Something went wrong saving attendee changes.");
+        toastError("Something went wrong saving attendee changes.");
         return;
       }
 
@@ -102,7 +103,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
 
     if (!res.ok && res.status !== 204) {
       console.error("Failed to delete attendee", await res.text());
-      alert("Something went wrong deleting the attendee.");
+      toastError("Something went wrong deleting the attendee.");
       return;
     }
 
@@ -113,7 +114,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
 
   const convertToContact = async (attendee: Attendee) => {
     if (attendee.contact_id) {
-      alert("This attendee is already linked to a contact.");
+      toastInfo("This attendee is already linked to a contact.");
       return;
     }
 
@@ -130,7 +131,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
           "Failed to convert attendee to contact",
           await res.text(),
         );
-        alert("Something went wrong converting this attendee to a contact.");
+        toastError("Something went wrong converting this attendee to a contact.");
         return;
       }
 
@@ -141,7 +142,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
       };
 
       if (data.alreadyLinked) {
-        alert("This attendee is already linked to a contact.");
+        toastInfo("This attendee is already linked to a contact.");
         return;
       }
 
@@ -151,7 +152,7 @@ export function OpenHomeAttendeesClient({ eventId, initialAttendees }: Props) {
             a.id === attendee.id ? { ...a, contact_id: data.contactId! } : a,
           ),
         );
-        alert("Contact created and linked to this attendee.");
+        toastSuccess("Contact created and linked to this attendee.");
       }
     } finally {
       setConvertingId(null);

@@ -3,6 +3,7 @@ import React from "react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/requireUser";
 import { ContactsTable } from "./ContactsTable";
+import { ContactsFilterBar } from "./ContactsFilterBar";
 
 type ContactRow = {
   id: number;
@@ -19,13 +20,35 @@ type ContactRow = {
   [key: string]: any;
 };
 
-export default async function ContactsPage() {
-  const { user, supabase } = await requireUser();
+type SearchParams = {
+  stage?: string;
+  rating?: string;
+  is_buyer?: string;
+  is_seller?: string;
+};
 
-  const { data, error } = await supabase
+export default async function ContactsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const { user, supabase } = await requireUser();
+  const filters = await searchParams;
+
+  let query = supabase
     .from("contacts")
     .select("*")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .order("name", { ascending: true })
+    .limit(500);
+
+  if (filters.stage) query = query.eq("stage", filters.stage);
+  if (filters.rating) query = query.eq("rating", filters.rating);
+  if (filters.is_buyer === "true") query = query.eq("is_buyer", true);
+  if (filters.is_seller === "true") query = query.eq("is_seller", true);
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Failed to load contacts:", error);
@@ -113,6 +136,16 @@ export default async function ContactsPage() {
           </Link>
         </div>
       </header>
+
+      {/* FILTER BAR */}
+      <div className="mb-4">
+        <ContactsFilterBar
+          currentStage={filters.stage ?? ""}
+          currentRating={filters.rating ?? ""}
+          isBuyer={filters.is_buyer === "true"}
+          isSeller={filters.is_seller === "true"}
+        />
+      </div>
 
       {/* TABLE + SORT + PAGINATION (client side) */}
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

@@ -1,6 +1,6 @@
 // src/app/api/deals/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 
 type RouteParams = {
   params: Promise<{ id: string }>;
@@ -9,29 +9,6 @@ type RouteParams = {
 function parseId(id: string) {
   const n = Number(id);
   return Number.isFinite(n) ? n : null;
-}
-
-async function requireUser(supabase: any) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error) {
-    return {
-      user: null,
-      response: NextResponse.json({ error: error.message }, { status: 500 }),
-    };
-  }
-
-  if (!user) {
-    return {
-      user: null,
-      response: NextResponse.json({ error: "Not signed in" }, { status: 401 }),
-    };
-  }
-
-  return { user, response: null as NextResponse | null };
 }
 
 const DEAL_SELECT = `
@@ -67,15 +44,14 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid deal ID" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const { data, error } = await supabase
     .from("deals")
     .select(DEAL_SELECT)
     .eq("id", dealId)
-    .eq("user_id", user!.id)
+    .eq("user_id", user.id)
     .single();
 
   if (error) {
@@ -98,9 +74,8 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid deal ID" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const payload = (await req.json().catch(() => ({}))) as Record<
     string,
@@ -137,7 +112,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     .from("deals")
     .update(updates)
     .eq("id", dealId)
-    .eq("user_id", user!.id)
+    .eq("user_id", user.id)
     .select(DEAL_SELECT)
     .single();
 
@@ -161,15 +136,14 @@ export async function DELETE(_req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid deal ID" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const { error } = await supabase
     .from("deals")
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", dealId)
-    .eq("user_id", user!.id);
+    .eq("user_id", user.id);
 
   if (error) {
     console.error("Error deleting deal", error);

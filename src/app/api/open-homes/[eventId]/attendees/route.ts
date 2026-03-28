@@ -1,6 +1,6 @@
 // app/api/open-homes/[eventId]/attendees/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 
 type LeadSource =
   | "realestate.com.au"
@@ -32,16 +32,8 @@ export async function POST(
   context: { params: Promise<{ eventId: string }> }
 ) {
   const { eventId } = await context.params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-  }
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   // ✅ Ensure the event exists AND is owned by this user
   const { data: event, error: eventError } = await supabase

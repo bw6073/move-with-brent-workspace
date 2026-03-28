@@ -1,21 +1,7 @@
 // src/app/api/properties/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-
-async function requireUser(supabase: any) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return {
-      user: null,
-      response: NextResponse.json({ error: "Not signed in" }, { status: 401 }),
-    };
-  }
-  return { user, response: null };
-}
+import { requireUser } from "@/lib/api/requireUser";
+import { PropertyCreateSchema } from "@/lib/schemas/property";
 
 const toTextOrNull = (v: unknown) => {
   const s = String(v ?? "").trim();
@@ -30,9 +16,8 @@ const toNumberOrNull = (v: unknown) => {
 
 // Optional: GET /api/properties?status=for_sale&suburb=Mundaring&q=gannon
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
@@ -42,8 +27,10 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("properties")
     .select("*")
-    .eq("user_id", user!.id)
-    .order("updated_at", { ascending: false });
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(500);
 
   if (status) query = query.eq("market_status", status);
   if (suburb) query = query.ilike("suburb", suburb);
@@ -66,24 +53,24 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { user, response } = await requireUser(supabase);
-    if (response) return response;
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const body = (await req.json().catch(() => ({}))) as any;
 
-    const street_address = toTextOrNull(body.streetAddress);
-    const suburb = toTextOrNull(body.suburb);
-
-    if (!street_address || !suburb) {
+    const parsed = PropertyCreateSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "streetAddress and suburb are required" },
+        { error: "Validation failed", issues: parsed.error.flatten() },
         { status: 400 }
       );
     }
 
+    const street_address = toTextOrNull(body.streetAddress);
+    const suburb = toTextOrNull(body.suburb);
+
     const insertPayload = {
-      user_id: user!.id,
+      user_id: user.id,
       street_address,
       suburb,
       state: toTextOrNull(body.state) ?? "WA",

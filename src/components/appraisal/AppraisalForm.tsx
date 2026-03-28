@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { CreateDealButton } from "@/components/pipeline/CreateDealButton";
+import { toastSuccess, toastError } from "@/lib/toast";
 
 import {
   Step,
@@ -486,7 +487,7 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
       }
 
       if (mode === "create" && newId) {
-        alert(
+        toastSuccess(
           markComplete
             ? "Appraisal saved and marked as completed."
             : "Appraisal saved as draft."
@@ -495,13 +496,13 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
         return;
       }
 
-      alert(
+      toastSuccess(
         markComplete
           ? "Appraisal saved and marked as completed."
           : "Appraisal saved as draft."
       );
     } catch (err: any) {
-      alert(err?.message || "Unexpected error while saving the appraisal.");
+      toastError(err?.message || "Unexpected error while saving the appraisal.");
     } finally {
       setSaving(false);
     }
@@ -528,15 +529,15 @@ const AppraisalForm: React.FC<AppraisalFormProps> = ({
       if (!res.ok) {
         const text = await res.text();
         console.error("Delete error:", text);
-        alert("Failed to delete appraisal.");
+        toastError("Failed to delete appraisal.");
         return;
       }
 
-      alert("Appraisal deleted.");
+      toastSuccess("Appraisal deleted.");
       window.location.href = "/appraisals";
     } catch (err) {
       console.error(err);
-      alert("Something went wrong deleting appraisal.");
+      toastError("Something went wrong deleting appraisal.");
     }
   };
 

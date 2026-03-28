@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { toastError } from "@/lib/toast";
 
 export type TaskRow = {
   id: number;
@@ -191,11 +192,11 @@ export function TasksPageClient({
     if (saving) return;
 
     if (!createContactId) {
-      alert("Please select a contact.");
+      toastError("Please select a contact.");
       return;
     }
     if (!createTitle.trim()) {
-      alert("Please add a task title.");
+      toastError("Please add a task title.");
       return;
     }
 

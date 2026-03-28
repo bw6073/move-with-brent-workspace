@@ -1,7 +1,7 @@
 // src/app/api/open-homes/[eventId]/export/csv/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 
 type EventRow = {
   id: string;
@@ -51,17 +51,8 @@ export async function GET(
   context: { params: Promise<{ eventId: string }> },
 ) {
   const { eventId } = await context.params;
-
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-  }
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   // 1) Load the event (scoped)
   const { data: event, error: eventError } = await supabase

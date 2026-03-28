@@ -3,15 +3,33 @@ import React from "react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/requireUser";
 import { PropertiesTable, type PropertyItem } from "./PropertiesTable";
+import { PropertiesFilterBar } from "./PropertiesFilterBar";
 
-export default async function PropertiesPage() {
+type SearchParams = {
+  status?: string;
+  property_type?: string;
+};
+
+export default async function PropertiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const { user, supabase } = await requireUser();
+  const filters = await searchParams;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("properties")
     .select("*")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (filters.status) query = query.eq("market_status", filters.status);
+  if (filters.property_type) query = query.eq("property_type", filters.property_type);
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Failed to load properties:", error);
@@ -74,9 +92,8 @@ export default async function PropertiesPage() {
       row.town ??
       "";
 
-    // 👇 NOW INCLUDING market_status
     const statusFromRow =
-      row.market_status ?? // <-- your actual column
+      row.market_status ??
       row.status ??
       row.listing_status ??
       row.property_status ??
@@ -84,7 +101,7 @@ export default async function PropertiesPage() {
       null;
 
     const statusFromData =
-      d.marketStatus ?? // in case you ever mirror it into JSON
+      d.marketStatus ??
       d.status ??
       d.listingStatus ??
       d.listing_status ??
@@ -143,6 +160,14 @@ export default async function PropertiesPage() {
           </Link>
         </div>
       </header>
+
+      {/* FILTER BAR */}
+      <div className="mb-4">
+        <PropertiesFilterBar
+          currentStatus={filters.status ?? ""}
+          currentPropertyType={filters.property_type ?? ""}
+        />
+      </div>
 
       {/* TABLE WITH SORT + PAGINATION */}
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

@@ -3,6 +3,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
+import { toastSuccess, toastError } from "@/lib/toast";
 
 type OpenHomeEvent = {
   id: string;
@@ -260,7 +261,7 @@ export function EditOpenHomeForm({
           onClick={async () => {
             try {
               await syncToGoogleCalendar();
-              alert("Home open synced to Google Calendar.");
+              toastSuccess("Home open synced to Google Calendar.");
             } catch (e: any) {
               setError(e?.message || "Failed to sync to Google Calendar.");
             }

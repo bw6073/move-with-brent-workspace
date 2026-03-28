@@ -1,6 +1,7 @@
 // src/app/api/deals/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
+import { DealCreateSchema } from "@/lib/schemas/deal";
 
 const toNumberOrNull = (v: unknown) => {
   if (v === null || v === undefined || v === "") return null;
@@ -27,16 +28,8 @@ const buildAddressTitle = (p: {
 
 export async function GET(req: NextRequest) {
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const { searchParams } = new URL(req.url);
 
@@ -95,7 +88,9 @@ export async function GET(req: NextRequest) {
       `
       )
       .eq("user_id", user.id)
-      .order("updated_at", { ascending: false });
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false })
+      .limit(500);
 
     if (propertyId) q = q.eq("property_id", propertyId);
     if (contactId) q = q.eq("contact_id", contactId);
@@ -120,21 +115,21 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const body = (await req.json().catch(() => ({}))) as Record<
       string,
       unknown
     >;
+
+    const parsed = DealCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
 
     const propertyId =
       toNumberOrNull(body.property_id) ??

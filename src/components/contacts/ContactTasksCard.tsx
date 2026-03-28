@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { toastError } from "@/lib/toast";
 
 export type ContactTask = {
   id: number;
@@ -96,7 +97,7 @@ export function ContactTasksCard({ contactId }: Props) {
     if (saving) return;
 
     if (!title.trim()) {
-      alert("Please add a task title.");
+      toastError("Please add a task title.");
       return;
     }
 
@@ -153,7 +154,7 @@ export function ContactTasksCard({ contactId }: Props) {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         console.error("Failed to mark task complete:", text);
-        alert("Could not update task.");
+        toastError("Could not update task.");
         return;
       }
 
@@ -166,7 +167,7 @@ export function ContactTasksCard({ contactId }: Props) {
       }
     } catch (err) {
       console.error("Unexpected error updating task", err);
-      alert("Unexpected error updating task.");
+      toastError("Unexpected error updating task.");
     }
   };
 
@@ -182,14 +183,14 @@ export function ContactTasksCard({ contactId }: Props) {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         console.error("Failed to delete task:", text);
-        alert("Could not delete task.");
+        toastError("Could not delete task.");
         return;
       }
 
       setItems((prev) => prev.filter((t) => t.id !== taskId));
     } catch (err) {
       console.error("Unexpected error deleting task", err);
-      alert("Unexpected error deleting task.");
+      toastError("Unexpected error deleting task.");
     }
   };
 

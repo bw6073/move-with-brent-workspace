@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, FormEvent } from "react";
+import { toastError } from "@/lib/toast";
 
 type Property = {
   id: number;
@@ -42,11 +43,11 @@ export function NewOpenHomeForm({
     e.preventDefault();
 
     if (!propertyId) {
-      alert("Please select a property.");
+      toastError("Please select a property.");
       return;
     }
     if (!startAt) {
-      alert("Please select a start date and time.");
+      toastError("Please select a start date and time.");
       return;
     }
 
@@ -67,7 +68,7 @@ export function NewOpenHomeForm({
       if (!res.ok) {
         const json = await res.json().catch(() => null);
         console.error("Error creating open home:", json);
-        alert("Something went wrong creating the open home.");
+        toastError("Something went wrong creating the open home.");
         return;
       }
 

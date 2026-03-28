@@ -1,6 +1,7 @@
 // src/app/api/contacts/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
+import { ContactCreateSchema } from "@/lib/schemas/contact";
 
 // Small helper so the front-end has a consistent shape
 function mapContact(row: any) {
@@ -44,20 +45,15 @@ function mapContact(row: any) {
 // ─────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      console.error("No authenticated user in GET /api/contacts", userError);
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const { searchParams } = new URL(req.url);
     const q = searchParams.get("q")?.trim() || null;
+    const stage = searchParams.get("stage") || null;
+    const rating = searchParams.get("rating") || null;
+    const isBuyer = searchParams.get("is_buyer");
+    const isSeller = searchParams.get("is_seller");
 
     let query = supabase
       .from("contacts")
@@ -96,12 +92,15 @@ export async function GET(req: NextRequest) {
       `
       )
       .eq("user_id", user.id)
-      .order("name", { ascending: true });
+      .is("deleted_at", null)
+      .order("name", { ascending: true })
+      .limit(500);
 
-    if (q) {
-      // simple name search
-      query = query.ilike("name", `%${q}%`);
-    }
+    if (q) query = query.ilike("name", `%${q}%`);
+    if (stage) query = query.eq("stage", stage);
+    if (rating) query = query.eq("rating", rating);
+    if (isBuyer === "true") query = query.eq("is_buyer", true);
+    if (isSeller === "true") query = query.eq("is_seller", true);
 
     const { data, error } = await query;
 
@@ -140,22 +139,21 @@ export async function GET(req: NextRequest) {
 // ─────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      console.error("No authenticated user in POST /api/contacts", userError);
-      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-    }
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const body = await req.json().catch(() => null);
 
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const parsed = ContactCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.flatten() },
+        { status: 400 }
+      );
     }
 
     // Compose a full name if not explicitly given

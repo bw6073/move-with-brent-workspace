@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/layout/ServiceWorkerRegister";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "Move With Brent – CRM",
@@ -36,6 +37,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-slate-50">
         <ServiceWorkerRegister />
+        <Toaster position="top-right" richColors />
         {children}
       </body>
     </html>

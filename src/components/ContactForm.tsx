@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toastError } from "@/lib/toast";
 
 type ContactFormProps = {
   initialContact?: {
@@ -42,7 +43,7 @@ export default function ContactForm({ initialContact }: ContactFormProps) {
       if (!res.ok) {
         const text = await res.text();
         console.error("Save contact error:", res.status, text);
-        alert("Failed to save contact.");
+        toastError("Failed to save contact.");
         setSaving(false);
         return;
       }
@@ -58,7 +59,7 @@ export default function ContactForm({ initialContact }: ContactFormProps) {
       }
     } catch (err) {
       console.error("Unexpected contact save error:", err);
-      alert("Unexpected error saving contact.");
+      toastError("Unexpected error saving contact.");
       setSaving(false);
     }
   };

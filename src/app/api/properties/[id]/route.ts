@@ -1,25 +1,10 @@
 // src/app/api/properties/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 
 type RouteProps = {
   params: Promise<{ id: string }>;
 };
-
-async function requireUser(supabase: any) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return {
-      user: null,
-      response: NextResponse.json({ error: "Not signed in" }, { status: 401 }),
-    };
-  }
-  return { user, response: null };
-}
 
 const toTextOrNull = (v: unknown) => {
   const s = String(v ?? "").trim();
@@ -45,15 +30,15 @@ export async function GET(_req: NextRequest, props: RouteProps) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const { data, error } = await supabase
     .from("properties")
     .select("*")
     .eq("id", numericId)
-    .eq("user_id", user!.id)
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (error) {
@@ -76,9 +61,8 @@ export async function PATCH(req: NextRequest, props: RouteProps) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({} as any));
 
@@ -169,7 +153,7 @@ export async function PATCH(req: NextRequest, props: RouteProps) {
     .from("properties")
     .update(updates)
     .eq("id", numericId)
-    .eq("user_id", user!.id)
+    .eq("user_id", user.id)
     .select("*")
     .maybeSingle();
 
@@ -196,15 +180,14 @@ export async function DELETE(_req: NextRequest, props: RouteProps) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const { error } = await supabase
     .from("properties")
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", numericId)
-    .eq("user_id", user!.id);
+    .eq("user_id", user.id);
 
   if (error) {
     console.error("[DELETE /api/properties/[id]] error:", error);

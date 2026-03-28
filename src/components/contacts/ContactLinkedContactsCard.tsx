@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { toastError } from "@/lib/toast";
 
 type LinkedContact = {
   id: number;
@@ -157,7 +158,7 @@ export function ContactLinkedContactsCard({ contactId }: Props) {
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         console.error("Failed to delete linked contact:", txt);
-        alert("Could not remove link.");
+        toastError("Could not remove link.");
         return;
       }
 

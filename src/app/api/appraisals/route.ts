@@ -1,29 +1,7 @@
 // src/app/api/appraisals/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-
-type Authed = { user: { id: string } };
-
-async function requireUser(
-  supabase: any
-): Promise<
-  | { user: { id: string }; response: null }
-  | { user: null; response: NextResponse }
-> {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return {
-      user: null,
-      response: NextResponse.json({ error: "Not signed in" }, { status: 401 }),
-    };
-  }
-
-  return { user: { id: user.id }, response: null };
-}
+import { requireUser } from "@/lib/api/requireUser";
+import { AppraisalCreateSchema } from "@/lib/schemas/appraisal";
 
 function norm(s: unknown) {
   return String(s ?? "").trim();
@@ -103,9 +81,8 @@ async function ensurePropertyIdFromAddress(
 // GET – list appraisals (optional filters)
 // ─────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const { user, response } = await requireUser(supabase);
-  if (response) return response;
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const { searchParams } = new URL(req.url);
   const contactIdParam = searchParams.get("contactId");
@@ -170,7 +147,8 @@ export async function GET(req: NextRequest) {
       .select("*")
       .eq("user_id", user.id)
       .eq("property_id", propertyId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(500);
 
     if (error) {
       console.error("Failed to load appraisals for property", error);
@@ -228,13 +206,20 @@ export async function GET(req: NextRequest) {
 // ─────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { user, response } = await requireUser(supabase);
-    if (response) return response;
+    const { user, supabase, errorResponse } = await requireUser();
+    if (errorResponse) return errorResponse;
 
     const body = await req.json().catch(() => null);
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const validation = AppraisalCreateSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: validation.error.flatten() },
+        { status: 400 }
+      );
     }
 
     const {

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { toastError } from "@/lib/toast";
 
 export default function LogoutButton() {
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function LogoutButton() {
       router.push("/login");
     } catch (err) {
       console.error("Logout error:", err);
-      alert("There was a problem logging out.");
+      toastError("There was a problem logging out.");
     } finally {
       setLoading(false);
     }

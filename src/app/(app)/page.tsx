@@ -255,6 +255,55 @@ export default async function HomePage() {
     };
   });
 
+  // ── PIPELINE BY STAGE ─────────────────
+  const { data: dealData } = await supabase
+    .from("deals")
+    .select("stage, estimated_value_low, estimated_value_high")
+    .eq("user_id", user.id)
+    .is("deleted_at", null);
+
+  type DealStageGroup = {
+    count: number;
+    valueLow: number;
+    valueHigh: number;
+  };
+
+  const DEAL_STAGE_ORDER = ["lead", "prospect", "appraisal", "listed", "under_offer", "sold", "lost"];
+  const pipelineByStage = new Map<string, DealStageGroup>();
+
+  for (const deal of dealData ?? []) {
+    const stage = deal.stage ?? "lead";
+    const existing = pipelineByStage.get(stage) ?? { count: 0, valueLow: 0, valueHigh: 0 };
+    pipelineByStage.set(stage, {
+      count: existing.count + 1,
+      valueLow: existing.valueLow + (deal.estimated_value_low ?? 0),
+      valueHigh: existing.valueHigh + (deal.estimated_value_high ?? 0),
+    });
+  }
+
+  const pipelineStages = DEAL_STAGE_ORDER
+    .filter((s) => pipelineByStage.has(s))
+    .map((s) => ({ stage: s, ...pipelineByStage.get(s)! }));
+
+  // ── CONTACT FUNNEL ─────────────────────
+  const { data: contactFunnelData } = await supabase
+    .from("contacts")
+    .select("stage")
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .limit(500);
+
+  const contactByStage = new Map<string, number>();
+  for (const c of contactFunnelData ?? []) {
+    const stage = c.stage ?? "none";
+    contactByStage.set(stage, (contactByStage.get(stage) ?? 0) + 1);
+  }
+  const contactFunnel = Array.from(contactByStage.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  const totalContacts = contactFunnelData?.length ?? 0;
+
   // ── OPEN HOMES SNAPSHOT ────────────────
   const { data: openHomeData, error: openHomeError } = await supabase
     .from("open_home_events")
@@ -427,6 +476,79 @@ export default async function HomePage() {
           <p className="mt-1 text-xl font-semibold text-slate-900">
             {noDueCount}
           </p>
+        </div>
+      </section>
+
+      {/* PIPELINE + CONTACT FUNNEL */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        {/* PIPELINE BY STAGE */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">Pipeline by stage</h2>
+            <Link href="/pipeline" className="text-[11px] font-medium text-slate-600 hover:underline">
+              View pipeline
+            </Link>
+          </div>
+          {pipelineStages.length === 0 ? (
+            <p className="text-xs text-slate-500">No deals yet. Add one from the Pipeline page.</p>
+          ) : (
+            <ul className="space-y-2">
+              {pipelineStages.map(({ stage, count, valueLow, valueHigh }) => {
+                const label = stage.replace(/_/g, " ");
+                const valueDisplay = valueHigh > 0
+                  ? `$${(valueLow / 1000).toFixed(0)}k–$${(valueHigh / 1000).toFixed(0)}k`
+                  : valueLow > 0
+                  ? `$${(valueLow / 1000).toFixed(0)}k`
+                  : null;
+                return (
+                  <li key={stage} className="flex items-center justify-between gap-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+                      <span className="capitalize text-slate-700">{label}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-slate-500">
+                      {valueDisplay && <span className="font-medium text-slate-700">{valueDisplay}</span>}
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5">{count} deal{count !== 1 ? "s" : ""}</span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* CONTACT FUNNEL */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">Contact funnel</h2>
+            <Link href="/contacts" className="text-[11px] font-medium text-slate-600 hover:underline">
+              View contacts
+            </Link>
+          </div>
+          {contactFunnel.length === 0 ? (
+            <p className="text-xs text-slate-500">No contacts yet. Add contacts to see your funnel.</p>
+          ) : (
+            <ul className="space-y-2">
+              {contactFunnel.map(([stage, count]) => {
+                const label = stage === "none" ? "No stage" : stage.replace(/_/g, " ");
+                const pct = totalContacts > 0 ? Math.round((count / totalContacts) * 100) : 0;
+                return (
+                  <li key={stage} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="capitalize text-slate-700">{label}</span>
+                      <span className="text-xs text-slate-500">{count} ({pct}%)</span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-slate-100">
+                      <div
+                        className="h-1.5 rounded-full bg-slate-700"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       </section>
 

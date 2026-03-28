@@ -1,6 +1,6 @@
 // app/api/open-homes/[eventId]/attendees/[attendeeId]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 
 type Ctx = { params: Promise<{ eventId: string; attendeeId: string }> };
 
@@ -30,16 +30,8 @@ async function requireOwnedEvent(
 
 export async function PATCH(req: NextRequest, context: Ctx) {
   const { eventId, attendeeId } = await context.params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-  }
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   // ✅ Ensure the parent event exists + is owned
   const owned = await requireOwnedEvent(supabase, eventId, user.id);
@@ -128,16 +120,8 @@ export async function PATCH(req: NextRequest, context: Ctx) {
 
 export async function DELETE(_req: NextRequest, context: Ctx) {
   const { eventId, attendeeId } = await context.params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-  }
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   // ✅ Ensure the parent event exists + is owned
   const owned = await requireOwnedEvent(supabase, eventId, user.id);

@@ -1,6 +1,6 @@
 // app/api/open-homes/[eventId]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/api/requireUser";
 import {
   deleteGoogleCalendarEvent,
   refreshGoogleToken,
@@ -23,16 +23,8 @@ type GoogleAccountRow = {
 // ───────────────── PATCH ─────────────────
 export async function PATCH(req: NextRequest, context: Context) {
   const { eventId } = await context.params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-  }
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({} as any));
   const { propertyId, title, startAt, endAt, notes } = body;
@@ -91,16 +83,8 @@ export async function PATCH(req: NextRequest, context: Context) {
 // ───────────────── DELETE ─────────────────
 export async function DELETE(_req: NextRequest, context: Context) {
   const { eventId } = await context.params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
-  }
+  const { user, supabase, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
 
   // 0) Load the open home first (to get google_event_id)
   const { data: eventRow, error: loadErr } = await supabase

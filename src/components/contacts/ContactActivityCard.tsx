@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { toastError } from "@/lib/toast";
 
 export type ContactActivity = {
   id: number;
@@ -132,7 +133,7 @@ export function ContactActivityCard({ contactId }: Props) {
     if (saving) return;
 
     if (!summary.trim() && !subject.trim()) {
-      alert("Please add at least a subject or summary.");
+      toastError("Please add at least a subject or summary.");
       return;
     }
 
@@ -195,14 +196,14 @@ export function ContactActivityCard({ contactId }: Props) {
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         console.error("Failed to delete contact activity:", text);
-        alert("Could not delete this entry.");
+        toastError("Could not delete this entry.");
         return;
       }
 
       setItems((prev) => prev.filter((a) => a.id !== id));
     } catch (err) {
       console.error("Unexpected error deleting contact activity", err);
-      alert("Unexpected error while deleting.");
+      toastError("Unexpected error while deleting.");
     } finally {
       setDeletingIds((prev) => prev.filter((x) => x !== id));
     }
