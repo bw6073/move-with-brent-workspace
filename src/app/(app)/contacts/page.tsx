@@ -48,7 +48,23 @@ export default async function ContactsPage({
   if (filters.is_buyer === "true") query = query.eq("is_buyer", true);
   if (filters.is_seller === "true") query = query.eq("is_seller", true);
 
-  const { data, error } = await query;
+  const [{ data, error }, { data: activityData }] = await Promise.all([
+    query,
+    supabase
+      .from("contact_activities")
+      .select("contact_id, activity_at")
+      .eq("user_id", user.id)
+      .order("activity_at", { ascending: false })
+      .limit(2000),
+  ]);
+
+  // Build map of contact_id → most recent activity_at
+  const lastContactedMap = new Map<number, string>();
+  for (const a of activityData ?? []) {
+    if (!lastContactedMap.has(a.contact_id)) {
+      lastContactedMap.set(a.contact_id, a.activity_at);
+    }
+  }
 
   if (error) {
     console.error("Failed to load contacts:", error);
@@ -106,6 +122,7 @@ export default async function ContactsPage({
       lastName,
       createdRaw,
       created,
+      lastContactedRaw: lastContactedMap.get(c.id) ?? null,
     };
   });
 

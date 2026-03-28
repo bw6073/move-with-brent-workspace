@@ -15,20 +15,43 @@ type ContactItem = {
   phone: string;
   createdRaw?: string | null;
   created: string;
+  lastContactedRaw?: string | null;
 };
 
 type Props = {
   contacts: ContactItem[];
 };
 
-type SortValue = "created_desc" | "created_asc" | "name_asc" | "name_desc";
+type SortValue = "created_desc" | "created_asc" | "name_asc" | "name_desc" | "last_contacted_asc";
 
 const SORT_OPTIONS: { label: string; value: SortValue }[] = [
   { label: "Recently created", value: "created_desc" },
   { label: "Oldest first", value: "created_asc" },
   { label: "Name A–Z (last name)", value: "name_asc" },
   { label: "Name Z–A (last name)", value: "name_desc" },
+  { label: "Needs follow-up (oldest contact)", value: "last_contacted_asc" },
 ];
+
+const NOW = Date.now();
+
+function lastContactedLabel(raw: string | null | undefined): {
+  label: string;
+  cls: string;
+} {
+  if (!raw) return { label: "Never", cls: "text-red-500 font-medium" };
+  const days = Math.floor((NOW - Date.parse(raw)) / 86_400_000);
+  const label =
+    days === 0 ? "Today" :
+    days === 1 ? "Yesterday" :
+    days < 30  ? `${days}d ago` :
+    days < 60  ? `${days}d ago` :
+                 `${days}d ago`;
+  const cls =
+    days >= 60 ? "text-red-500 font-medium" :
+    days >= 30 ? "text-amber-500 font-medium" :
+                 "text-slate-600";
+  return { label, cls };
+}
 
 export function ContactsTable({ contacts }: Props) {
   const [sort, setSort] = useState<SortValue>("created_desc");
@@ -59,6 +82,12 @@ export function ContactsTable({ contacts }: Props) {
         case "created_asc": {
           const aTime = a.createdRaw ? Date.parse(a.createdRaw) : 0;
           const bTime = b.createdRaw ? Date.parse(b.createdRaw) : 0;
+          return aTime - bTime;
+        }
+        case "last_contacted_asc": {
+          // Never contacted sorts first (oldest/most at-risk)
+          const aTime = a.lastContactedRaw ? Date.parse(a.lastContactedRaw) : 0;
+          const bTime = b.lastContactedRaw ? Date.parse(b.lastContactedRaw) : 0;
           return aTime - bTime;
         }
         case "created_desc":
@@ -131,6 +160,7 @@ export function ContactsTable({ contacts }: Props) {
               <th className="py-2 px-4">Full name</th>
               <th className="py-2 px-4">Email</th>
               <th className="py-2 px-4">Phone</th>
+              <th className="py-2 px-4">Last contacted</th>
               <th className="py-2 px-4">Created</th>
               <th className="py-2 pl-4 text-right">Actions</th>
             </tr>
@@ -154,6 +184,12 @@ export function ContactsTable({ contacts }: Props) {
 
                 <td className="py-2 px-4 text-slate-700">{c.email || "—"}</td>
                 <td className="py-2 px-4 text-slate-700">{c.phone || "—"}</td>
+                <td className="py-2 px-4 text-xs">
+                  {(() => {
+                    const { label, cls } = lastContactedLabel(c.lastContactedRaw);
+                    return <span className={cls}>{label}</span>;
+                  })()}
+                </td>
                 <td className="py-2 px-4 text-slate-700">{c.created}</td>
 
                 <td className="py-2 pl-4 text-right">
