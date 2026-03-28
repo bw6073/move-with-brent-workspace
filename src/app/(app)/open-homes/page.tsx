@@ -9,6 +9,7 @@ type OpenHomeRow = {
   start_at: string;
   end_at: string | null;
   notes: string | null;
+  attendeeCount: number;
   properties?: {
     street_address: string;
     suburb: string;
@@ -20,26 +21,33 @@ type OpenHomeRow = {
 export default async function OpenHomesIndexPage() {
   const { user, supabase } = await requireUser();
 
-  const { data, error } = await supabase
-    .from("open_home_events")
-    .select(
+  const [{ data, error }, { data: attendeeCounts }] = await Promise.all([
+    supabase
+      .from("open_home_events")
+      .select(
+        `
+        id,
+        property_id,
+        title,
+        start_at,
+        end_at,
+        notes,
+        properties (
+          street_address,
+          suburb,
+          state,
+          postcode
+        )
       `
-      id,
-      property_id,
-      title,
-      start_at,
-      end_at,
-      notes,
-      properties (
-        street_address,
-        suburb,
-        state,
-        postcode
       )
-    `
-    )
-    .eq("user_id", user.id) // ✅ defence in depth
-    .order("start_at", { ascending: true });
+      .eq("user_id", user.id)
+      .order("start_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("open_home_attendees")
+      .select("event_id")
+      .eq("user_id", user.id),
+  ]);
 
   if (error) {
     console.error("Failed to load open homes", JSON.stringify(error, null, 2));
@@ -52,6 +60,12 @@ export default async function OpenHomesIndexPage() {
     );
   }
 
+  // Build attendee count map
+  const countMap = new Map<string, number>();
+  for (const a of attendeeCounts ?? []) {
+    countMap.set(a.event_id, (countMap.get(a.event_id) ?? 0) + 1);
+  }
+
   const events: OpenHomeRow[] = (data ?? []).map((row: any) => ({
     id: row.id,
     property_id: row.property_id,
@@ -59,36 +73,21 @@ export default async function OpenHomesIndexPage() {
     start_at: row.start_at,
     end_at: row.end_at,
     notes: row.notes,
+    attendeeCount: countMap.get(row.id) ?? 0,
     properties: row.properties ?? null,
   }));
 
-  return (
-    <div className="mx-auto max-w-5xl px-6 py-6">
-      <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Open homes</h1>
-          <p className="text-sm text-slate-500">
-            Manage upcoming and past open inspections.
-          </p>
-        </div>
+  const now = new Date();
+  const upcoming = events.filter((e) => new Date(e.start_at) >= now);
+  const past = events.filter((e) => new Date(e.start_at) < now);
 
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/open-homes/new"
-            className="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-700"
-          >
-            + Schedule open home
-          </Link>
-        </div>
-      </header>
-
-      {!events || events.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-          No open homes scheduled yet. Use{" "}
-          <span className="font-medium">“Schedule open home”</span> to create
-          your first one.
-        </div>
-      ) : (
+  function EventTable({ rows, label }: { rows: OpenHomeRow[]; label: string }) {
+    if (rows.length === 0) return null;
+    return (
+      <div>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          {label}
+        </h2>
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50">
@@ -102,8 +101,8 @@ export default async function OpenHomesIndexPage() {
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Date &amp; time
                 </th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Notes
+                <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Attendees
                 </th>
                 <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Actions
@@ -111,7 +110,7 @@ export default async function OpenHomesIndexPage() {
               </tr>
             </thead>
             <tbody>
-              {events.map((event) => {
+              {rows.map((event) => {
                 const property = event.properties;
                 const label = property
                   ? `${property.street_address}, ${property.suburb} ${property.state} ${property.postcode}`
@@ -122,15 +121,15 @@ export default async function OpenHomesIndexPage() {
                 return (
                   <tr
                     key={event.id}
-                    className="border-b border-slate-100 last:border-b-0"
+                    className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
                   >
-                    <td className="px-3 py-2 align-top text-slate-800">
+                    <td className="px-3 py-2 align-middle text-slate-800">
                       {label}
                     </td>
-                    <td className="px-3 py-2 align-top text-slate-700">
+                    <td className="px-3 py-2 align-middle text-slate-700">
                       {event.title || "Open home"}
                     </td>
-                    <td className="px-3 py-2 align-top text-slate-700">
+                    <td className="px-3 py-2 align-middle text-slate-700">
                       {start
                         ? start.toLocaleString("en-AU", {
                             weekday: "short",
@@ -141,16 +140,30 @@ export default async function OpenHomesIndexPage() {
                           })
                         : "—"}
                     </td>
-                    <td className="max-w-xs px-3 py-2 align-top text-slate-500">
-                      <span className="line-clamp-2">{event.notes || "—"}</span>
+                    <td className="px-3 py-2 align-middle text-center">
+                      {event.attendeeCount > 0 ? (
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                          {event.attendeeCount}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
                     </td>
-                    <td className="px-3 py-2 align-top text-right">
-                      <Link
-                        href={`/open-homes/${event.id}`}
-                        className="inline-flex rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                      >
-                        View
-                      </Link>
+                    <td className="px-3 py-2 align-middle text-right">
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          href={`/open-homes/${event.id}`}
+                          className="inline-flex rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          View
+                        </Link>
+                        <Link
+                          href={`/open-homes/${event.id}/edit`}
+                          className="inline-flex rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
+                        >
+                          Edit
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -158,6 +171,39 @@ export default async function OpenHomesIndexPage() {
             </tbody>
           </table>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl px-6 py-6 space-y-6">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Open homes</h1>
+          <p className="text-sm text-slate-500">
+            Manage upcoming and past open inspections.
+          </p>
+        </div>
+
+        <Link
+          href="/open-homes/new"
+          className="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-700"
+        >
+          + Schedule open home
+        </Link>
+      </header>
+
+      {events.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+          No open homes scheduled yet. Use{" "}
+          <span className="font-medium">"Schedule open home"</span> to create
+          your first one.
+        </div>
+      ) : (
+        <>
+          <EventTable rows={upcoming} label={`Upcoming (${upcoming.length})`} />
+          <EventTable rows={past} label={`Past (${past.length})`} />
+        </>
       )}
     </div>
   );
