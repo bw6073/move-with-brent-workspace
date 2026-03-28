@@ -1,5 +1,5 @@
 // app/open-homes/new/page.tsx
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import { NewOpenHomeForm } from "./NewOpenHomeForm";
 
 type Property = {
@@ -18,11 +18,13 @@ export default async function NewOpenHomePage(props: {
     ? Number(searchParams.propertyId)
     : undefined;
 
-  const supabase = await createClient();
+  const { user, supabase } = await requireUser();
 
   const { data, error } = await supabase
     .from("properties")
     .select("id, street_address, suburb, state, postcode")
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
     .order("street_address", { ascending: true })
     .returns<Property[]>();
 

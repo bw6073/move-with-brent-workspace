@@ -1,5 +1,5 @@
 // src/app/(app)/open-homes/[eventId]/page.tsx
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import Link from "next/link";
 import { format } from "date-fns";
 import { OpenHomeAttendeesClient, Attendee } from "./OpenHomeAttendeesClient";
@@ -37,27 +37,7 @@ const formatDateTime = (iso: string | null) => {
 
 export default async function OpenHomeAdminPage(props: RouteProps) {
   const { eventId } = await props.params;
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return (
-      <div className="mx-auto max-w-5xl space-y-3 px-6 py-6">
-        <h1 className="mb-2 text-2xl font-semibold">Open home</h1>
-        <p className="text-red-600">You must be logged in to view this page.</p>
-        <Link
-          href="/open-homes"
-          className="mt-2 inline-flex text-sm text-blue-600 hover:underline"
-        >
-          ← Back to open homes
-        </Link>
-      </div>
-    );
-  }
+  const { user, supabase } = await requireUser();
 
   // 1) Load the event (scoped to the current user)
   const { data: event, error: eventError } = await supabase

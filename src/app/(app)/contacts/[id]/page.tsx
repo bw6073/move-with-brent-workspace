@@ -1,6 +1,6 @@
 // src/app/(app)/contacts/[id]/page.tsx
 import React from "react";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import ContactDetailClient from "@/components/contacts/ContactDetailClient";
 import type { Contact } from "@/components/contacts/ContactEditForm";
 
@@ -16,18 +16,7 @@ export default async function ContactDetailPage(props: PageProps) {
     return <div>Invalid contact ID</div>;
   }
 
-  const supabase = await createClient();
-
-  // Auth
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    console.error("No authenticated user in /contacts/[id]", userError);
-    return <div>Unauthorised</div>;
-  }
+  const { user, supabase } = await requireUser();
 
   // Load contact
   const { data, error } = await supabase

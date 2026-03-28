@@ -1,7 +1,7 @@
 // src/app/contacts/[id]/edit/page.tsx
 import React from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import {
   ContactEditForm,
   type Contact,
@@ -19,15 +19,7 @@ export default async function ContactEditPage({ params }: PageProps) {
     return <div>Invalid contact ID</div>;
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return <div>Unauthorised</div>;
-  }
+  const { user, supabase } = await requireUser();
 
   const { data, error } = await supabase
     .from("contacts")

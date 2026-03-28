@@ -1,5 +1,5 @@
 // src/app/(app)/open-homes/page.tsx
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import Link from "next/link";
 
 type OpenHomeRow = {
@@ -18,22 +18,7 @@ type OpenHomeRow = {
 };
 
 export default async function OpenHomesIndexPage() {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return (
-      <div className="mx-auto max-w-5xl px-6 py-6">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          You must be logged in to view open homes.
-        </div>
-      </div>
-    );
-  }
+  const { user, supabase } = await requireUser();
 
   const { data, error } = await supabase
     .from("open_home_events")

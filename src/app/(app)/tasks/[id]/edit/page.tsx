@@ -1,5 +1,5 @@
 // src/app/tasks/[id]/edit/page.tsx
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import TaskForm from "@/components/tasks/TaskForm";
 
 type PageProps = {
@@ -18,20 +18,7 @@ export default async function EditTaskPage({ params }: PageProps) {
     );
   }
 
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return (
-      <div className="mx-auto max-w-3xl px-6 py-6 text-sm text-slate-600">
-        You need to sign in to edit tasks.
-      </div>
-    );
-  }
+  const { user, supabase } = await requireUser();
 
   const { data, error } = await supabase
     .from("tasks")

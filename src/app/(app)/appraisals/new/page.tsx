@@ -1,6 +1,6 @@
 // src/app/appraisals/new/page.tsx
 import AppraisalForm from "@/components/appraisal/AppraisalForm";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 
 type PageSearchParams = {
   contactId?: string;
@@ -12,7 +12,7 @@ type PageProps = {
 };
 
 export default async function NewAppraisalPage({ searchParams }: PageProps) {
-  const supabase = await createClient();
+  const { user, supabase } = await requireUser();
 
   // Next 16: searchParams is a Promise
   const sp = await searchParams;
@@ -44,13 +44,7 @@ export default async function NewAppraisalPage({ searchParams }: PageProps) {
     const contactId = Number(contactIdParam);
 
     if (!Number.isNaN(contactId)) {
-      // Get authed user for RLS
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (!userError && user) {
+      {
         const { data, error } = await supabase
           .from("contacts")
           .select(
@@ -100,8 +94,6 @@ export default async function NewAppraisalPage({ searchParams }: PageProps) {
             error
           );
         }
-      } else {
-        console.error("[new appraisal] No authenticated user", userError);
       }
     } else {
       console.warn(

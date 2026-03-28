@@ -25,7 +25,10 @@ export default async function AppraisalsPage() {
   const { data, error } = await supabase
     .from("appraisals")
     .select("*")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(500);
 
   if (error) {
     console.error("Failed to load appraisals:", error);

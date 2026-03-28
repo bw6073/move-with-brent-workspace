@@ -1,6 +1,6 @@
 // src/app/properties/[id]/edit/page.tsx
 import React from "react";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import { PropertyForm } from "@/components/properties/PropertyForm";
 
 // In Next 16 for this route, `params` itself is a Promise
@@ -23,19 +23,7 @@ export default async function EditPropertyPage({ params }: PageProps) {
     );
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (!user || userError) {
-    return (
-      <div className="mx-auto max-w-3xl px-6 py-10 text-sm text-slate-600">
-        Unauthorised – please sign in.
-      </div>
-    );
-  }
+  const { user, supabase } = await requireUser();
 
   const { data, error } = await supabase
     .from("properties")

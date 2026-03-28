@@ -1,21 +1,10 @@
 import React from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import { PropertyForm } from "@/components/properties/PropertyForm";
 
 export default async function NewPropertyPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-5xl px-6 py-10 text-sm text-slate-600">
-        Unauthorised – please sign in.
-      </div>
-    );
-  }
+  await requireUser(); // ensures auth, redirects if not signed in
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-6 space-y-4">
