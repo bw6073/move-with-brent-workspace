@@ -2,6 +2,7 @@
 import React from "react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/requireUser";
+import { DashboardTaskList } from "@/components/dashboard/DashboardTaskList";
 
 // ───────────────── TYPES ─────────────────
 
@@ -86,40 +87,6 @@ const formatDateTimeShort = (iso: string | null) => {
   });
 };
 
-const statusBadgeClass = (status: string | null) => {
-  if (status === "completed") return "bg-emerald-100 text-emerald-700";
-  return "bg-slate-100 text-slate-700";
-};
-
-const linkPill = (t: HomeTaskRow) => {
-  if (t.related_contact_id) {
-    return (
-      <Link
-        href={`/contacts/${t.related_contact_id}`}
-        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 max-w-[160px] truncate"
-      >
-        👤 Contact #{t.related_contact_id}
-      </Link>
-    );
-  }
-
-  if (t.related_property_id) {
-    return (
-      <Link
-        href={`/properties/${t.related_property_id}`}
-        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 max-w-[200px] truncate"
-      >
-        🏡 Property #{t.related_property_id}
-      </Link>
-    );
-  }
-
-  return (
-    <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-400">
-      Not linked
-    </span>
-  );
-};
 
 // ───────────────── PAGE ─────────────────
 
@@ -698,61 +665,7 @@ export default async function HomePage() {
             </div>
           </div>
 
-          {tasks.length === 0 && (
-            <p className="text-xs text-slate-500">
-              No tasks yet. Create one from a contact, property or the Tasks
-              page.
-            </p>
-          )}
-
-          {tasks.length > 0 && (
-            <ul className="divide-y divide-slate-100 text-sm">
-              {tasks.map((t) => {
-                const isOverdue =
-                  t.due_date &&
-                  new Date(t.due_date).getTime() <
-                    new Date().setHours(0, 0, 0, 0);
-
-                return (
-                  <li
-                    key={t.id}
-                    className="flex items-start justify-between gap-3 py-2"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <div className="truncate font-medium text-slate-900">
-                        <Link
-                          href={`/tasks/${t.id}/edit`}
-                          className="hover:underline"
-                        >
-                          {t.title}
-                        </Link>
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        {linkPill(t)}
-                      </div>
-                    </div>
-
-                    <div className="ml-3 flex flex-col items-end gap-1">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${statusBadgeClass(
-                          t.status
-                        )}`}
-                      >
-                        {t.status}
-                      </span>
-                      <span
-                        className={`text-[11px] ${
-                          isOverdue ? "text-red-600" : "text-slate-500"
-                        }`}
-                      >
-                        {t.due_date ? formatDate(t.due_date) : "No due date"}
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <DashboardTaskList tasks={tasks} />
         </div>
 
         {/* RIGHT COLUMN: open homes + recent activity */}
