@@ -26,7 +26,6 @@ export default async function AppraisalsPage() {
     .from("appraisals")
     .select("*")
     .eq("user_id", user.id)
-    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(500);
 
