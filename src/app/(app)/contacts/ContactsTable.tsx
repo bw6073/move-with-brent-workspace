@@ -186,11 +186,6 @@ export function ContactsTable({ contacts, initialSort }: Props) {
     setPage(1);
   };
 
-  const handleSearch = (value: string) => {
-    setSearch(value);
-    setPage(1);
-  };
-
   const handlePrev = () => setPage((p) => Math.max(p - 1, 1));
   const handleNext = () => setPage((p) => p + 1);
 
@@ -206,7 +201,7 @@ export function ContactsTable({ contacts, initialSort }: Props) {
           <input
             type="search"
             value={search}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search name, email or phone…"
             className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs sm:text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 w-56"
           />

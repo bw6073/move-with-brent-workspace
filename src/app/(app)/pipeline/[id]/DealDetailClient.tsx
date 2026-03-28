@@ -128,7 +128,6 @@ export default function DealDetailClient({ initialDeal, initialTasks }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [completingId, setCompletingId] = useState<number | null>(null);
 
-  // Form drafts
   const [titleDraft, setTitleDraft] = useState(
     isPlaceholderTitle(initialDeal.title) ? "" : initialDeal.title ?? ""
   );
@@ -505,14 +504,14 @@ export default function DealDetailClient({ initialDeal, initialTasks }: Props) {
               ) : (
                 <div className="space-y-1">
                   {openTasks.map((task) => (
-                    <TaskRow key={task.id} task={task} onToggle={toggleTask} completing={completingId === task.id} />
+                    <TaskItem key={task.id} task={task} onToggle={toggleTask} completing={completingId === task.id} />
                   ))}
                   {doneTasks.length > 0 && (
                     <>
                       {openTasks.length > 0 && <div className="border-t border-slate-100 my-2" />}
                       <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400 mb-1">Completed</p>
                       {doneTasks.map((task) => (
-                        <TaskRow key={task.id} task={task} onToggle={toggleTask} completing={completingId === task.id} />
+                        <TaskItem key={task.id} task={task} onToggle={toggleTask} completing={completingId === task.id} />
                       ))}
                     </>
                   )}
@@ -562,7 +561,7 @@ export default function DealDetailClient({ initialDeal, initialTasks }: Props) {
   );
 }
 
-function TaskRow({
+function TaskItem({
   task,
   onToggle,
   completing,

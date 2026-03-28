@@ -34,13 +34,16 @@ export function PipelineClient({ initialDeals }: Props) {
     });
   }, [deals, search]);
 
-  const activeDeals = filteredDeals.filter((d) => d.stage !== "lost" && d.stage !== "sold");
-  const totalLow = activeDeals.reduce((sum, d) => sum + (Number(d.estimated_value_low) || 0), 0);
-  const totalHigh = activeDeals.reduce((sum, d) => sum + (Number(d.estimated_value_high) || 0), 0);
-  const fmtM = (n: number) => n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}m` : n > 0 ? `$${Math.round(n / 1000)}k` : null;
-  const pipelineValue = fmtM(totalLow) && fmtM(totalHigh) && totalLow !== totalHigh
-    ? `${fmtM(totalLow)}–${fmtM(totalHigh)}`
-    : fmtM(totalHigh) || fmtM(totalLow);
+  const { activeDeals, pipelineValue } = useMemo(() => {
+    const fmtM = (n: number) => n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}m` : n > 0 ? `$${Math.round(n / 1000)}k` : null;
+    const active = filteredDeals.filter((d) => d.stage !== "lost" && d.stage !== "sold");
+    const totalLow = active.reduce((sum, d) => sum + (Number(d.estimated_value_low) || 0), 0);
+    const totalHigh = active.reduce((sum, d) => sum + (Number(d.estimated_value_high) || 0), 0);
+    const value = fmtM(totalLow) && fmtM(totalHigh) && totalLow !== totalHigh
+      ? `${fmtM(totalLow)}–${fmtM(totalHigh)}`
+      : fmtM(totalHigh) || fmtM(totalLow);
+    return { activeDeals: active, pipelineValue: value };
+  }, [filteredDeals]);
 
   return (
     <div className="p-4 md:p-6">
