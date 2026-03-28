@@ -26,11 +26,18 @@ export default async function SettingsPage() {
     phone: (user.user_metadata?.phone as string | undefined) ?? "",
   };
 
-  const { data: gacc } = await supabase
-    .from("google_accounts")
-    .select("user_id, open_homes_calendar_id, appraisals_calendar_id")
-    .eq("user_id", user.id)
-    .maybeSingle<GoogleAccountRow>();
+  const [{ data: gacc }, { data: emailSettings }] = await Promise.all([
+    supabase
+      .from("google_accounts")
+      .select("user_id, open_homes_calendar_id, appraisals_calendar_id")
+      .eq("user_id", user.id)
+      .maybeSingle<GoogleAccountRow>(),
+    supabase
+      .from("user_settings")
+      .select("resend_api_key, resend_from_email, resend_from_name")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
 
   const googleConnected = Boolean(gacc?.user_id);
 
@@ -46,6 +53,11 @@ export default async function SettingsPage() {
         googleConnected={googleConnected}
         initialOpenHomesCalendarId={gacc?.open_homes_calendar_id ?? null}
         initialAppraisalsCalendarId={gacc?.appraisals_calendar_id ?? null}
+        initialEmailSettings={{
+          resendApiKeySet: Boolean(emailSettings?.resend_api_key),
+          resendFromEmail: emailSettings?.resend_from_email ?? "",
+          resendFromName: emailSettings?.resend_from_name ?? "",
+        }}
       />
     </div>
   );

@@ -17,11 +17,18 @@ type GoogleCal = {
   primary: boolean;
 };
 
+type EmailSettings = {
+  resendApiKeySet: boolean;
+  resendFromEmail: string;
+  resendFromName: string;
+};
+
 type Props = {
   initial: Initial;
   googleConnected: boolean;
   initialOpenHomesCalendarId: string | null;
   initialAppraisalsCalendarId: string | null;
+  initialEmailSettings: EmailSettings;
 };
 
 export function SettingsClient({
@@ -29,6 +36,7 @@ export function SettingsClient({
   googleConnected,
   initialOpenHomesCalendarId,
   initialAppraisalsCalendarId,
+  initialEmailSettings,
 }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -60,6 +68,15 @@ export function SettingsClient({
   );
 
   const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
+
+  // Email (Resend) settings
+  const [resendApiKey, setResendApiKey] = useState(
+    initialEmailSettings.resendApiKeySet ? "••••••••" : ""
+  );
+  const [resendFromEmail, setResendFromEmail] = useState(initialEmailSettings.resendFromEmail);
+  const [resendFromName, setResendFromName] = useState(initialEmailSettings.resendFromName);
+  const [resendApiKeySet, setResendApiKeySet] = useState(initialEmailSettings.resendApiKeySet);
+  const [savingEmail2, setSavingEmail2] = useState(false);
 
   const clearNotices = () => {
     setMessage(null);
@@ -241,6 +258,34 @@ export function SettingsClient({
       setErrorMsg(err?.message || "Failed to update password.");
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const saveEmailSettings = async () => {
+    clearNotices();
+    setSavingEmail2(true);
+    try {
+      const res = await fetch("/api/settings/email", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resend_api_key: resendApiKey,
+          resend_from_email: resendFromEmail,
+          resend_from_name: resendFromName,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Failed to save email settings");
+      // If a real key was entered, mask it and mark as set
+      if (resendApiKey && !resendApiKey.startsWith("•")) {
+        setResendApiKey("••••••••");
+        setResendApiKeySet(true);
+      }
+      setMessage("Email settings saved.");
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Failed to save email settings.");
+    } finally {
+      setSavingEmail2(false);
     }
   };
 
@@ -453,6 +498,77 @@ export function SettingsClient({
         <p className="mt-3 text-xs text-slate-500">
           If you change Google accounts, use “Reconnect”.
         </p>
+      </section>
+
+      {/* Email integration */}
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-semibold text-slate-900">Email integration</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Connect Resend to send emails from contact profiles. Get your API key at{" "}
+          <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="underline">
+            resend.com
+          </a>
+          . The "from" address must be a verified domain in your Resend account.
+        </p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-slate-700">
+              Resend API key
+            </label>
+            <input
+              type="password"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+              value={resendApiKey}
+              onChange={(e) => setResendApiKey(e.target.value)}
+              placeholder={resendApiKeySet ? "Enter a new key to replace the saved one" : "re_xxxxxxxxxxxxxxxx"}
+              autoComplete="off"
+            />
+            {resendApiKeySet && (
+              <p className="mt-1 text-xs text-slate-500">
+                A key is saved. Paste a new one above to replace it.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700">
+              From email address
+            </label>
+            <input
+              type="email"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={resendFromEmail}
+              onChange={(e) => setResendFromEmail(e.target.value)}
+              placeholder="brent@yourdomain.com.au"
+              autoComplete="off"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700">
+              From name
+            </label>
+            <input
+              type="text"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              value={resendFromName}
+              onChange={(e) => setResendFromName(e.target.value)}
+              placeholder="Brent Falkingham"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={saveEmailSettings}
+            disabled={savingEmail2}
+            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {savingEmail2 ? "Saving…" : "Save email settings"}
+          </button>
+        </div>
       </section>
 
       {/* Password */}
