@@ -142,9 +142,17 @@ function getStatusBadge(status: string) {
 export function PropertiesTable({ properties }: Props) {
   const [sort, setSort] = useState<SortValue>("created_desc");
   const [page, setPage] = useState<number>(1);
+  const [search, setSearch] = useState("");
 
   const { pageItems, totalCount, fromIndex, totalPages } = useMemo(() => {
-    const sorted = [...properties].sort((a, b) => {
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? properties.filter((p) =>
+          [p.address, p.suburb].some((s) => s?.toLowerCase().includes(q))
+        )
+      : properties;
+
+    const sorted = [...filtered].sort((a, b) => {
       const aAddress = (a.address || "").toLowerCase();
       const bAddress = (b.address || "").toLowerCase();
       const aSuburb = (a.suburb || "").toLowerCase();
@@ -210,10 +218,15 @@ export function PropertiesTable({ properties }: Props) {
       fromIndex,
       totalPages,
     };
-  }, [properties, sort, page]);
+  }, [properties, sort, page, search]);
 
   const handleChangeSort = (value: SortValue) => {
     setSort(value);
+    setPage(1);
+  };
+
+  const handleSearch = (value: string) => {
+    setSearch(value);
     setPage(1);
   };
 
@@ -230,12 +243,20 @@ export function PropertiesTable({ properties }: Props) {
 
   return (
     <>
-      {/* SORT + SUMMARY */}
+      {/* SEARCH + SORT + SUMMARY */}
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-slate-500 sm:text-sm">
-          {totalCount} propert{totalCount === 1 ? "y" : "ies"} · Page {page} of{" "}
-          {totalPages}
-        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search address or suburb…"
+            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs sm:text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 w-52"
+          />
+          <p className="text-xs text-slate-500">
+            {totalCount} propert{totalCount === 1 ? "y" : "ies"} · Page {page}/{totalPages}
+          </p>
+        </div>
 
         <div className="flex items-center gap-2 text-xs sm:text-sm">
           <span className="text-slate-500">Sort by</span>
