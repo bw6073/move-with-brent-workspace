@@ -1,11 +1,12 @@
 // src/app/(app)/pipeline/[id]/DealDetailClient.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { DealStage } from "@/lib/deals/stages";
 import { DEAL_STAGES, DEAL_STAGE_LABEL } from "@/lib/deals/stages";
+import { toastSuccess, toastError } from "@/lib/toast";
 
 type DealContact = {
   id: number;
@@ -35,65 +36,57 @@ type Deal = {
   id: number;
   title: string | null;
   stage: DealStage | null;
-  created_at: string | null;
-  updated_at: string | null;
-
+  estimated_value_low: string | null;
+  estimated_value_high: string | null;
+  confidence: "low" | "medium" | "high" | null;
+  next_action_at: string | null;
+  notes: string | null;
   contact_id: number | null;
   property_id: number | null;
   appraisal_id: number | null;
-
+  created_at: string | null;
+  updated_at: string | null;
   contacts: DealContact | null;
   properties: DealProperty | null;
   appraisals: DealAppraisal | null;
 };
 
+type TaskRow = {
+  id: number;
+  title: string | null;
+  status: string | null;
+  priority: string | null;
+  task_type: string | null;
+  due_date: string | null;
+  related_contact_id: number | null;
+  related_property_id: number | null;
+};
+
 type Props = {
-  dealId: number;
+  initialDeal: Deal;
+  initialTasks: TaskRow[];
 };
 
 function stagePillClass(stage: DealStage | null | undefined) {
   switch (stage) {
-    case "lead":
-      return "bg-slate-100 text-slate-700 border-slate-200";
-    case "nurture":
-      return "bg-sky-50 text-sky-700 border-sky-200";
-    case "appraisal":
-      return "bg-indigo-50 text-indigo-700 border-indigo-200";
-    case "pre_market":
-      return "bg-purple-50 text-purple-700 border-purple-200";
-    case "for_sale":
-      return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    case "under_offer":
-      return "bg-amber-50 text-amber-800 border-amber-200";
-    case "sold":
-      return "bg-slate-200 text-slate-800 border-slate-300";
-    case "lost":
-      return "bg-red-50 text-red-700 border-red-200";
-    default:
-      return "bg-slate-50 text-slate-600 border-slate-200";
+    case "lead":      return "bg-slate-100 text-slate-700 border-slate-200";
+    case "nurture":   return "bg-sky-50 text-sky-700 border-sky-200";
+    case "appraisal": return "bg-indigo-50 text-indigo-700 border-indigo-200";
+    case "pre_market":return "bg-purple-50 text-purple-700 border-purple-200";
+    case "for_sale":  return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "under_offer":return "bg-amber-50 text-amber-800 border-amber-200";
+    case "sold":      return "bg-slate-200 text-slate-800 border-slate-300";
+    case "lost":      return "bg-red-50 text-red-700 border-red-200";
+    default:          return "bg-slate-50 text-slate-600 border-slate-200";
   }
 }
 
 function buildAddressTitle(p?: DealProperty | null) {
   if (!p) return "";
-  const street = (p.street_address ?? "").trim();
-  const suburb = (p.suburb ?? "").trim();
-  const state = (p.state ?? "WA").trim();
-  const postcode = (p.postcode ?? "").toString().trim();
-  const parts = [street, suburb, state, postcode].filter(Boolean);
+  const parts = [p.street_address, p.suburb, p.state ?? "WA", p.postcode]
+    .map((s) => (s ?? "").trim())
+    .filter(Boolean);
   return parts.join(", ");
-}
-
-function buildAppraisalTitle(a?: DealAppraisal | null) {
-  if (!a?.data) return "";
-  const t = (a.data?.appraisalTitle as string | undefined)?.trim() ?? "";
-  if (t) return t;
-
-  const addr = [a.data?.streetAddress, a.data?.suburb]
-    .filter(Boolean)
-    .join(", ")
-    .trim();
-  return addr;
 }
 
 function isPlaceholderTitle(t: string | null | undefined) {
@@ -106,224 +99,256 @@ function isPlaceholderTitle(t: string | null | undefined) {
   );
 }
 
-export default function DealDetailClient({ dealId }: Props) {
+function fmtDate(iso: string | null | undefined) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function fmtCurrency(v: string | null | undefined) {
+  if (!v) return null;
+  const n = Number(v);
+  if (!n) return null;
+  return new Intl.NumberFormat("en-AU", {
+    style: "currency",
+    currency: "AUD",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+export default function DealDetailClient({ initialDeal, initialTasks }: Props) {
   const router = useRouter();
 
-  const [deal, setDeal] = useState<Deal | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  // inline editing
-  const [titleDraft, setTitleDraft] = useState("");
-  const [stageDraft, setStageDraft] = useState<DealStage | "">("");
+  const [deal, setDeal] = useState<Deal>(initialDeal);
+  const [tasks, setTasks] = useState<TaskRow[]>(initialTasks);
   const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-
-  // delete
   const [deleting, setDeleting] = useState(false);
-  const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
+  const [completingId, setCompletingId] = useState<number | null>(null);
+
+  // Form drafts
+  const [titleDraft, setTitleDraft] = useState(
+    isPlaceholderTitle(initialDeal.title) ? "" : initialDeal.title ?? ""
+  );
+  const [stageDraft, setStageDraft] = useState<DealStage | "">(
+    (initialDeal.stage ?? "") as DealStage | ""
+  );
+  const [valueLowDraft, setValueLowDraft] = useState(
+    initialDeal.estimated_value_low ?? ""
+  );
+  const [valueHighDraft, setValueHighDraft] = useState(
+    initialDeal.estimated_value_high ?? ""
+  );
+  const [confidenceDraft, setConfidenceDraft] = useState(
+    initialDeal.confidence ?? ""
+  );
+  const [nextActionDraft, setNextActionDraft] = useState(
+    initialDeal.next_action_at?.slice(0, 10) ?? ""
+  );
+  const [notesDraft, setNotesDraft] = useState(initialDeal.notes ?? "");
 
   const headerTitle = useMemo(() => {
-    if (!deal) return `Deal #${dealId}`;
-
     const raw = (deal.title ?? "").trim();
     const addressTitle = buildAddressTitle(deal.properties);
-    const appraisalTitle = buildAppraisalTitle(deal.appraisals);
-
     return (
       (!isPlaceholderTitle(raw) ? raw : "") ||
       addressTitle ||
-      appraisalTitle ||
       `Deal #${deal.id}`
     );
-  }, [deal, dealId]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      setLoading(true);
-      setErr(null);
-
-      try {
-        const res = await fetch(`/api/deals/${dealId}`, { method: "GET" });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json.error || "Failed to load deal");
-
-        const d: Deal = json.deal ?? json;
-
-        if (!cancelled) {
-          setDeal(d);
-          setTitleDraft(isPlaceholderTitle(d.title) ? "" : d.title ?? "");
-          setStageDraft((d.stage ?? "") as any);
-        }
-      } catch (e: any) {
-        if (!cancelled) setErr(e?.message ?? "Error loading deal");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [dealId]);
+  }, [deal]);
 
   const handleSave = async () => {
-    if (!deal) return;
     if (saving) return;
-
     setSaving(true);
-    setSaveMsg(null);
-
     try {
-      const payload: Partial<Deal> = {
-        title: titleDraft.trim() || null,
-        stage: (stageDraft || null) as any,
-      };
-
       const res = await fetch(`/api/deals/${deal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          title: titleDraft.trim() || null,
+          stage: stageDraft || null,
+          estimated_value_low: valueLowDraft ? String(valueLowDraft) : null,
+          estimated_value_high: valueHighDraft ? String(valueHighDraft) : null,
+          confidence: confidenceDraft || null,
+          next_action_at: nextActionDraft || null,
+          notes: notesDraft.trim() || null,
+        }),
       });
-
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Failed to save deal");
-
-      const updated: Deal = json.deal ?? json;
-      setDeal(updated);
-      setTitleDraft(
-        isPlaceholderTitle(updated.title) ? "" : updated.title ?? ""
-      );
-      setStageDraft((updated.stage ?? "") as any);
-
-      setSaveMsg("Saved.");
-      setTimeout(() => setSaveMsg(null), 1200);
+      setDeal(json.deal ?? json);
+      toastSuccess("Deal saved.");
     } catch (e: any) {
-      setSaveMsg(e?.message ?? "Save failed");
+      toastError(e?.message ?? "Save failed");
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!deal) return;
     if (deleting) return;
-
     const ok = window.confirm("Delete this deal? This cannot be undone.");
     if (!ok) return;
-
     setDeleting(true);
-    setDeleteMsg(null);
-
     try {
       const res = await fetch(`/api/deals/${deal.id}`, { method: "DELETE" });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Failed to delete deal");
-
-      const goTo = deal.property_id
-        ? `/properties/${deal.property_id}`
-        : "/pipeline";
-      router.push(goTo);
+      router.push(deal.property_id ? `/properties/${deal.property_id}` : "/pipeline");
       router.refresh();
     } catch (e: any) {
-      setDeleteMsg(e?.message ?? "Delete failed");
+      toastError(e?.message ?? "Delete failed");
       setDeleting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-6xl px-6 py-10 text-sm text-slate-600">
-          Loading deal…
-        </div>
-      </div>
+  const toggleTask = async (task: TaskRow) => {
+    if (completingId === task.id) return;
+    const newStatus = task.status === "done" ? "pending" : "done";
+    setCompletingId(task.id);
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t))
     );
-  }
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error("Failed to update task");
+    } catch {
+      // Revert
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t))
+      );
+      toastError("Failed to update task.");
+    } finally {
+      setCompletingId(null);
+    }
+  };
 
-  if (err || !deal) {
-    return (
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-6xl px-6 py-10 text-sm text-red-600">
-          {err || "Deal not found."}
-        </div>
-      </div>
-    );
-  }
+  const openTasks = tasks.filter((t) => t.status !== "done");
+  const doneTasks = tasks.filter((t) => t.status === "done");
 
-  const contactHref = deal.contact_id ? `/contacts/${deal.contact_id}` : null;
-  const propertyHref = deal.property_id
-    ? `/properties/${deal.property_id}`
+  const contactName = deal.contacts
+    ? [deal.contacts.first_name, deal.contacts.last_name].filter(Boolean).join(" ") || `Contact #${deal.contact_id}`
     : null;
-  const appraisalHref = deal.appraisal_id
-    ? `/appraisals/${deal.appraisal_id}/edit`
-    : null;
+  const propertyAddress = buildAddressTitle(deal.properties) || (deal.property_id ? `Property #${deal.property_id}` : null);
 
-  const stageLabel =
-    deal.stage && DEAL_STAGE_LABEL[deal.stage]
-      ? DEAL_STAGE_LABEL[deal.stage]
-      : "—";
+  const valueLow = fmtCurrency(deal.estimated_value_low);
+  const valueHigh = fmtCurrency(deal.estimated_value_high);
+  const valueDisplay =
+    valueLow && valueHigh && deal.estimated_value_low !== deal.estimated_value_high
+      ? `${valueLow} – ${valueHigh}`
+      : valueHigh || valueLow;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 space-y-5">
-        {/* HEADER */}
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 space-y-5">
+
+        {/* HEADER CARD */}
         <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-xl md:text-2xl font-semibold text-slate-900">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <h1 className="truncate text-xl font-semibold text-slate-900">
                   {headerTitle}
                 </h1>
-
                 <span
                   className={[
                     "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium",
                     stagePillClass(deal.stage),
                   ].join(" ")}
-                  title="Deal stage"
                 >
-                  {stageLabel}
+                  {deal.stage ? DEAL_STAGE_LABEL[deal.stage] : "—"}
                 </span>
-
-                <span className="text-[11px] text-slate-400">
-                  Deal #{deal.id}
-                </span>
+                <span className="text-[11px] text-slate-400">Deal #{deal.id}</span>
               </div>
 
-              <div className="mt-2 grid gap-2 md:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-500">
-                    Title
-                  </label>
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">Title</label>
                   <input
                     value={titleDraft}
                     onChange={(e) => setTitleDraft(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                    placeholder="Leave blank to use auto title"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    placeholder="Leave blank for auto title"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-500">
-                    Stage
-                  </label>
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">Stage</label>
                   <select
                     value={stageDraft}
                     onChange={(e) => setStageDraft(e.target.value as any)}
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
                   >
                     <option value="">—</option>
                     {DEAL_STAGES.map((s) => (
-                      <option key={s} value={s}>
-                        {DEAL_STAGE_LABEL[s]}
-                      </option>
+                      <option key={s} value={s}>{DEAL_STAGE_LABEL[s]}</option>
                     ))}
                   </select>
                 </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">Confidence</label>
+                  <select
+                    value={confidenceDraft}
+                    onChange={(e) => setConfidenceDraft(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  >
+                    <option value="">—</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">Est. value low ($)</label>
+                  <input
+                    type="number"
+                    value={valueLowDraft}
+                    onChange={(e) => setValueLowDraft(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    placeholder="e.g. 800000"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">Est. value high ($)</label>
+                  <input
+                    type="number"
+                    value={valueHighDraft}
+                    onChange={(e) => setValueHighDraft(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                    placeholder="e.g. 900000"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">Next action date</label>
+                  <input
+                    type="date"
+                    value={nextActionDraft}
+                    onChange={(e) => setNextActionDraft(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <label className="block text-[11px] font-medium text-slate-500 mb-1">Notes</label>
+                <textarea
+                  value={notesDraft}
+                  onChange={(e) => setNotesDraft(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  placeholder="Add notes about this deal…"
+                />
               </div>
             </div>
 
@@ -337,7 +362,6 @@ export default function DealDetailClient({ dealId }: Props) {
                 >
                   {saving ? "Saving…" : "Save"}
                 </button>
-
                 <button
                   type="button"
                   onClick={handleDelete}
@@ -348,36 +372,32 @@ export default function DealDetailClient({ dealId }: Props) {
                 </button>
               </div>
 
-              {(saveMsg || deleteMsg) && (
-                <div className="text-[11px] text-slate-500">
-                  {deleteMsg ? (
-                    <span className="text-red-600">{deleteMsg}</span>
-                  ) : (
-                    saveMsg
-                  )}
-                </div>
-              )}
-
               <div className="flex flex-wrap gap-2 pt-1">
-                {contactHref && (
+                <Link
+                  href="/pipeline"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  ← Pipeline
+                </Link>
+                {deal.contact_id && (
                   <Link
-                    href={contactHref}
+                    href={`/contacts/${deal.contact_id}`}
                     className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
                   >
                     View contact
                   </Link>
                 )}
-                {propertyHref && (
+                {deal.property_id && (
                   <Link
-                    href={propertyHref}
+                    href={`/properties/${deal.property_id}`}
                     className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
                   >
                     View property
                   </Link>
                 )}
-                {appraisalHref && (
+                {deal.appraisal_id && (
                   <Link
-                    href={appraisalHref}
+                    href={`/appraisals/${deal.appraisal_id}/edit`}
                     className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
                   >
                     View appraisal
@@ -388,88 +408,190 @@ export default function DealDetailClient({ dealId }: Props) {
           </div>
         </div>
 
-        {/* BODY */}
+        {/* OVERVIEW + TASKS */}
         <div className="grid gap-5 lg:grid-cols-3">
-          <div className="space-y-5 lg:col-span-2">
+          <div className="lg:col-span-2 space-y-5">
+
+            {/* OVERVIEW */}
             <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5">
-              <h2 className="text-sm font-semibold text-slate-900">Overview</h2>
+              <h2 className="text-sm font-semibold text-slate-900 mb-3">Overview</h2>
+              <dl className="grid gap-3 sm:grid-cols-2 text-sm">
+                {contactName && (
+                  <div>
+                    <dt className="text-[11px] font-medium text-slate-500">Contact</dt>
+                    <dd>
+                      <Link href={`/contacts/${deal.contact_id}`} className="text-slate-800 hover:underline">
+                        {contactName}
+                      </Link>
+                      {deal.contacts?.phone_mobile && (
+                        <div className="text-xs text-slate-500">{deal.contacts.phone_mobile}</div>
+                      )}
+                      {deal.contacts?.email && (
+                        <div className="text-xs text-slate-500">{deal.contacts.email}</div>
+                      )}
+                    </dd>
+                  </div>
+                )}
 
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 text-sm">
-                <div>
-                  <div className="text-[11px] font-medium text-slate-500">
-                    Created
+                {propertyAddress && (
+                  <div>
+                    <dt className="text-[11px] font-medium text-slate-500">Property</dt>
+                    <dd>
+                      <Link href={`/properties/${deal.property_id}`} className="text-slate-800 hover:underline">
+                        {propertyAddress}
+                      </Link>
+                    </dd>
                   </div>
-                  <div className="text-slate-800">{deal.created_at ?? "—"}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] font-medium text-slate-500">
-                    Last updated
-                  </div>
-                  <div className="text-slate-800">{deal.updated_at ?? "—"}</div>
-                </div>
+                )}
 
-                <div className="sm:col-span-2">
-                  <div className="text-[11px] font-medium text-slate-500">
-                    Linked items
+                {valueDisplay && (
+                  <div>
+                    <dt className="text-[11px] font-medium text-slate-500">Estimated value</dt>
+                    <dd className="font-medium text-slate-800">{valueDisplay}</dd>
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700">
-                      Contact: {deal.contact_id ?? "—"}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700">
-                      Property: {deal.property_id ?? "—"}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700">
-                      Appraisal: {deal.appraisal_id ?? "—"}
-                    </span>
+                )}
+
+                {deal.next_action_at && (
+                  <div>
+                    <dt className="text-[11px] font-medium text-slate-500">Next action</dt>
+                    <dd className="text-slate-800">{fmtDate(deal.next_action_at)}</dd>
                   </div>
+                )}
+
+                <div>
+                  <dt className="text-[11px] font-medium text-slate-500">Created</dt>
+                  <dd className="text-slate-700">{fmtDate(deal.created_at)}</dd>
                 </div>
-              </div>
+                <div>
+                  <dt className="text-[11px] font-medium text-slate-500">Last updated</dt>
+                  <dd className="text-slate-700">{fmtDate(deal.updated_at)}</dd>
+                </div>
+              </dl>
             </section>
 
+            {/* TASKS */}
             <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5">
-              <h2 className="text-sm font-semibold text-slate-900">Activity</h2>
-              <p className="mt-2 text-sm text-slate-600">
-                Next we’ll drop in the timeline here (notes + tasks + changes),
-                newest first.
-              </p>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Tasks
+                  {openTasks.length > 0 && (
+                    <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                      {openTasks.length}
+                    </span>
+                  )}
+                </h2>
+                {deal.property_id && (
+                  <Link
+                    href={`/tasks?propertyId=${deal.property_id}`}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    All tasks →
+                  </Link>
+                )}
+              </div>
+
+              {tasks.length === 0 ? (
+                <p className="text-sm text-slate-500">No tasks linked to this deal yet.</p>
+              ) : (
+                <div className="space-y-1">
+                  {openTasks.map((task) => (
+                    <TaskRow key={task.id} task={task} onToggle={toggleTask} completing={completingId === task.id} />
+                  ))}
+                  {doneTasks.length > 0 && (
+                    <>
+                      {openTasks.length > 0 && <div className="border-t border-slate-100 my-2" />}
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400 mb-1">Completed</p>
+                      {doneTasks.map((task) => (
+                        <TaskRow key={task.id} task={task} onToggle={toggleTask} completing={completingId === task.id} />
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
             </section>
           </div>
 
+          {/* SIDEBAR */}
           <div className="space-y-5">
             <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-900">Notes</h2>
-                <button
-                  type="button"
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
-                >
-                  + Add note
-                </button>
-              </div>
-              <p className="mt-2 text-sm text-slate-600">
-                Placeholder — we’ll wire this to{" "}
-                <code className="text-xs">/api/deals/{deal.id}/notes</code>.
-              </p>
-            </section>
+              <h2 className="text-sm font-semibold text-slate-900 mb-3">Deal details</h2>
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-[11px] font-medium text-slate-500">Stage</dt>
+                  <dd>
+                    <span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium", stagePillClass(deal.stage)].join(" ")}>
+                      {deal.stage ? DEAL_STAGE_LABEL[deal.stage] : "—"}
+                    </span>
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-[11px] font-medium text-slate-500">Confidence</dt>
+                  <dd className="text-[11px] text-slate-700 capitalize">{deal.confidence ?? "—"}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-[11px] font-medium text-slate-500">Est. value</dt>
+                  <dd className="text-[11px] font-medium text-slate-800">{valueDisplay ?? "—"}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-[11px] font-medium text-slate-500">Next action</dt>
+                  <dd className="text-[11px] text-slate-700">{fmtDate(deal.next_action_at)}</dd>
+                </div>
+              </dl>
 
-            <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-900">Tasks</h2>
-                <button
-                  type="button"
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50"
-                >
-                  + Add task
-                </button>
-              </div>
-              <p className="mt-2 text-sm text-slate-600">
-                Placeholder — we’ll show open tasks first, then completed.
-              </p>
+              {deal.notes && (
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-[11px] font-medium text-slate-500 mb-1">Notes</p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{deal.notes}</p>
+                </div>
+              )}
             </section>
           </div>
         </div>
       </main>
     </div>
   );
+}
+
+function TaskRow({
+  task,
+  onToggle,
+  completing,
+}: {
+  task: TaskRow;
+  onToggle: (t: TaskRow) => void;
+  completing: boolean;
+}) {
+  const done = task.status === "done";
+  const overdue =
+    !done && task.due_date && new Date(task.due_date) < new Date();
+
+  return (
+    <label className="flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-50 cursor-pointer">
+      <input
+        type="checkbox"
+        checked={done}
+        disabled={completing}
+        onChange={() => onToggle(task)}
+        className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-slate-700 focus:ring-slate-300"
+      />
+      <span className="flex-1 min-w-0">
+        <span className={["text-sm", done ? "line-through text-slate-400" : "text-slate-800"].join(" ")}>
+          {task.title ?? `Task #${task.id}`}
+        </span>
+        {task.due_date && (
+          <span className={["ml-2 text-[11px]", overdue ? "text-red-500 font-medium" : "text-slate-400"].join(" ")}>
+            {new Date(task.due_date).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}
+            {overdue && " overdue"}
+          </span>
+        )}
+      </span>
+      <span className={["mt-1.5 h-1.5 w-1.5 rounded-full shrink-0", priorityDot(task.priority)].join(" ")} title={task.priority ?? ""} />
+    </label>
+  );
+}
+
+function priorityDot(p: string | null) {
+  if (p === "high") return "bg-red-400";
+  if (p === "normal") return "bg-amber-400";
+  return "bg-slate-300";
 }
