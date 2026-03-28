@@ -30,6 +30,17 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
+    // Read current stage before updating (for follow-up task detection)
+    const { data: existing } = await supabase
+      .from("contacts")
+      .select("stage")
+      .eq("id", contactId)
+      .eq("user_id", user.id)
+      .single();
+
+    const previousStage = existing?.stage ?? null;
+    const newStage: string | null = body.stage ?? null;
+
     // Map incoming fields → DB columns
     const update: Record<string, any> = {
       name: body.name ?? null,
@@ -51,6 +62,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
       contact_type: body.contact_type ?? null,
       lead_source: body.lead_source ?? null,
+      stage: newStage,
+      rating: body.rating ?? null,
       notes: body.notes ?? null,
 
       user_id: user.id,
@@ -86,6 +99,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
           postal_address,
           contact_type,
           lead_source,
+          stage,
+          rating,
           notes,
           created_at,
           updated_at
@@ -102,6 +117,32 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         { error: "Failed to update contact", supabaseError: error },
         { status: 500 }
       );
+    }
+
+    // Auto-create a follow-up task when stage changes
+    if (newStage && newStage !== previousStage) {
+      const FOLLOW_UP_DAYS: Record<string, { days: number; title: string }> = {
+        new_enquiry:        { days: 1,  title: "Follow up new enquiry" },
+        active_opportunity: { days: 3,  title: "Follow up active opportunity" },
+        appraisal_booked:   { days: 7,  title: "Follow up after appraisal" },
+        listed:             { days: 7,  title: "Vendor update call" },
+        nurture:            { days: 30, title: "Nurture check-in" },
+        inactive:           { days: 90, title: "Re-engagement check-in" },
+      };
+
+      const config = FOLLOW_UP_DAYS[newStage];
+      if (config) {
+        const due = new Date();
+        due.setDate(due.getDate() + config.days);
+        const contactName = data.name || [data.first_name, data.last_name].filter(Boolean).join(" ") || "contact";
+        await supabase.from("tasks").insert({
+          user_id: user.id,
+          title: `${config.title} — ${contactName}`,
+          status: "pending",
+          priority: newStage === "active_opportunity" ? "high" : "medium",
+          due_date: due.toISOString().split("T")[0],
+        });
+      }
     }
 
     return NextResponse.json({ contact: data });

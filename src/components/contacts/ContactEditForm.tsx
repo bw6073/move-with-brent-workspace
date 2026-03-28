@@ -27,6 +27,8 @@ export type Contact = {
 
   contact_type: string | null;
   lead_source: string | null;
+  stage: string | null;
+  rating: string | null;
 
   notes: string | null;
 
@@ -59,6 +61,8 @@ export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
     postal_address: contact.postal_address ?? "",
     contact_type: contact.contact_type ?? "",
     lead_source: contact.lead_source ?? "",
+    stage: contact.stage ?? "",
+    rating: contact.rating ?? "",
     notes: contact.notes ?? "",
   });
 
@@ -137,6 +141,8 @@ export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
 
         contact_type: form.contact_type || null,
         lead_source: form.lead_source || null,
+        stage: form.stage || null,
+        rating: form.rating || null,
         notes: form.notes || null,
       };
 
@@ -182,6 +188,8 @@ export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
         postal_address: updated.postal_address ?? "",
         contact_type: updated.contact_type ?? "",
         lead_source: updated.lead_source ?? "",
+        stage: updated.stage ?? "",
+        rating: updated.rating ?? "",
         notes: updated.notes ?? "",
       }));
 
@@ -424,6 +432,44 @@ export function ContactEditForm({ contact, onUpdated }: ContactEditFormProps) {
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             placeholder="Referral, signboard, REA, open home…"
           />
+        </div>
+
+        {/* Stage */}
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-slate-700">
+            Stage
+          </label>
+          <select
+            value={form.stage ?? ""}
+            onChange={handleChange("stage")}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+          >
+            <option value="">—</option>
+            <option value="new_enquiry">New enquiry</option>
+            <option value="active_opportunity">Active opportunity</option>
+            <option value="appraisal_booked">Appraisal booked</option>
+            <option value="listed">Listed</option>
+            <option value="sold">Sold</option>
+            <option value="nurture">Nurture</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+
+        {/* Rating */}
+        <div className="space-y-1">
+          <label className="block text-xs font-medium text-slate-700">
+            Rating
+          </label>
+          <select
+            value={form.rating ?? ""}
+            onChange={handleChange("rating")}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+          >
+            <option value="">—</option>
+            <option value="hot">Hot</option>
+            <option value="warm">Warm</option>
+            <option value="cold">Cold</option>
+          </select>
         </div>
 
         {/* Notes */}
