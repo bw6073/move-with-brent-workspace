@@ -20,6 +20,7 @@ type ContactItem = {
 
 type Props = {
   contacts: ContactItem[];
+  initialSort?: string;
 };
 
 type SortValue = "created_desc" | "created_asc" | "name_asc" | "name_desc" | "last_contacted_asc";
@@ -53,8 +54,10 @@ function lastContactedLabel(raw: string | null | undefined): {
   return { label, cls };
 }
 
-export function ContactsTable({ contacts }: Props) {
-  const [sort, setSort] = useState<SortValue>("created_desc");
+export function ContactsTable({ contacts, initialSort }: Props) {
+  const [sort, setSort] = useState<SortValue>(
+    (initialSort as SortValue) ?? "created_desc"
+  );
   const [page, setPage] = useState<number>(1);
 
   const { pageContacts, totalCount, fromIndex, totalPages } = useMemo(() => {

@@ -25,6 +25,7 @@ type SearchParams = {
   rating?: string;
   is_buyer?: string;
   is_seller?: string;
+  sort?: string;
 };
 
 export default async function ContactsPage({
@@ -172,7 +173,7 @@ export default async function ContactsPage({
 
       {/* TABLE + SORT + PAGINATION (client side) */}
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <ContactsTable contacts={contacts} />
+        <ContactsTable contacts={contacts} initialSort={filters.sort} />
       </section>
     </div>
   );

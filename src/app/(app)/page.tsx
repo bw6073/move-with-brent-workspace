@@ -304,6 +304,21 @@ export default async function HomePage() {
 
   const totalContacts = contactFunnelData?.length ?? 0;
 
+  // ── COLD CONTACTS COUNT ───────────────
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const { data: recentActivityData } = await supabase
+    .from("contact_activities")
+    .select("contact_id")
+    .eq("user_id", user.id)
+    .gte("activity_at", thirtyDaysAgo.toISOString());
+
+  const recentlyContactedIds = new Set(
+    (recentActivityData ?? []).map((a: any) => a.contact_id)
+  );
+  const coldContactCount = Math.max(0, totalContacts - recentlyContactedIds.size);
+
   // ── OPEN HOMES SNAPSHOT ────────────────
   const { data: openHomeData, error: openHomeError } = await supabase
     .from("open_home_events")
@@ -391,6 +406,107 @@ export default async function HomePage() {
           </p>
         </div>
       </header>
+
+      {/* TODAY'S FOCUS */}
+      {(overdueCount > 0 || todayCount > 0 || coldContactCount > 0) && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-amber-900">Today's focus</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+
+            {/* Overdue tasks */}
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-red-600">
+                Overdue ({overdueCount})
+              </p>
+              {overdueCount === 0 ? (
+                <p className="text-xs text-slate-500">Nothing overdue.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {allTasks
+                    .filter(
+                      (t) =>
+                        t.due_date &&
+                        new Date(t.due_date).getTime() < todayStart.getTime()
+                    )
+                    .slice(0, 5)
+                    .map((t) => (
+                      <li key={t.id} className="text-xs">
+                        <Link
+                          href={`/tasks/${t.id}/edit`}
+                          className="font-medium text-red-700 hover:underline line-clamp-1"
+                        >
+                          {t.title}
+                        </Link>
+                        <span className="ml-1 text-red-400">{formatDate(t.due_date)}</span>
+                      </li>
+                    ))}
+                  {overdueCount > 5 && (
+                    <li>
+                      <Link href="/tasks?status=pending" className="text-xs text-red-500 hover:underline">
+                        +{overdueCount - 5} more →
+                      </Link>
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+
+            {/* Due today */}
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                Due today ({todayCount})
+              </p>
+              {todayCount === 0 ? (
+                <p className="text-xs text-slate-500">Nothing due today.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {allTasks
+                    .filter(
+                      (t) =>
+                        t.due_date &&
+                        new Date(t.due_date).getTime() >= todayStart.getTime() &&
+                        new Date(t.due_date).getTime() <= todayEnd.getTime()
+                    )
+                    .slice(0, 5)
+                    .map((t) => (
+                      <li key={t.id}>
+                        <Link
+                          href={`/tasks/${t.id}/edit`}
+                          className="text-xs font-medium text-amber-800 hover:underline line-clamp-1"
+                        >
+                          {t.title}
+                        </Link>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Cold contacts */}
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Going cold ({coldContactCount})
+              </p>
+              {coldContactCount === 0 ? (
+                <p className="text-xs text-slate-500">All contacts touched recently.</p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-xs text-slate-600">
+                    {coldContactCount} contact{coldContactCount !== 1 ? "s" : ""} with no activity in 30+ days.
+                  </p>
+                  <Link
+                    href="/contacts?sort=last_contacted_asc"
+                    className="text-xs font-medium text-slate-700 hover:underline"
+                  >
+                    View who needs follow-up →
+                  </Link>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </section>
+      )}
 
       {/* QUICK NAV CARDS */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
