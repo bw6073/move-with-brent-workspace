@@ -32,6 +32,9 @@ type MonthStat = {
   contacts: number;
   appraisals: number;
   tasksCompleted: number;
+  openHomes: number;
+  calls: number;
+  emails: number;
 };
 
 type DealStageRow = {
@@ -75,6 +78,7 @@ export default async function ReportsPage() {
     { data: taskRows },
     { data: dealRows },
     { data: openHomeRows },
+    { data: activityRows },
   ] = await Promise.all([
     supabase
       .from("contacts")
@@ -107,6 +111,12 @@ export default async function ReportsPage() {
       .select("start_at")
       .eq("user_id", user.id)
       .gte("start_at", sixMonthsAgo),
+
+    supabase
+      .from("contact_activities")
+      .select("activity_at, activity_type")
+      .eq("user_id", user.id)
+      .gte("activity_at", sixMonthsAgo),
   ]);
 
   // Aggregate monthly stats
@@ -123,7 +133,19 @@ export default async function ReportsPage() {
       (r) => r.created_at >= start && r.created_at < end && r.status === "completed"
     ).length;
 
-    return { month: label, contacts, appraisals, tasksCompleted };
+    const openHomes = (openHomeRows ?? []).filter(
+      (r) => r.start_at >= start && r.start_at < end
+    ).length;
+
+    const calls = (activityRows ?? []).filter(
+      (r) => r.activity_at >= start && r.activity_at < end && r.activity_type === "call"
+    ).length;
+
+    const emails = (activityRows ?? []).filter(
+      (r) => r.activity_at >= start && r.activity_at < end && r.activity_type === "email"
+    ).length;
+
+    return { month: label, contacts, appraisals, tasksCompleted, openHomes, calls, emails };
   });
 
   // This month vs last month comparison
@@ -254,31 +276,41 @@ export default async function ReportsPage() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
           6-month trend
         </h2>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500">
                 <th className="px-4 py-2 text-left font-medium">Month</th>
-                <th className="px-4 py-2 text-right font-medium">Contacts</th>
+                <th className="px-4 py-2 text-right font-medium">New contacts</th>
                 <th className="px-4 py-2 text-right font-medium">Appraisals</th>
+                <th className="px-4 py-2 text-right font-medium">Open homes</th>
+                <th className="px-4 py-2 text-right font-medium">Calls</th>
+                <th className="px-4 py-2 text-right font-medium">Emails</th>
                 <th className="px-4 py-2 text-right font-medium">Tasks done</th>
               </tr>
             </thead>
             <tbody>
-              {monthStats.map((m) => (
+              {[...monthStats].reverse().map((m) => (
                 <tr key={m.month} className="border-b border-slate-100 last:border-0">
                   <td className="px-4 py-2 font-medium text-slate-900">{m.month}</td>
-                  <td className="px-4 py-2 text-right text-slate-700">
-                    {m.contacts > 0 ? m.contacts : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-4 py-2 text-right text-slate-700">
-                    {m.appraisals > 0 ? m.appraisals : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-4 py-2 text-right text-slate-700">
-                    {m.tasksCompleted > 0 ? m.tasksCompleted : <span className="text-slate-300">—</span>}
-                  </td>
+                  <td className="px-4 py-2 text-right text-slate-700">{m.contacts > 0 ? m.contacts : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-4 py-2 text-right text-slate-700">{m.appraisals > 0 ? m.appraisals : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-4 py-2 text-right text-slate-700">{m.openHomes > 0 ? m.openHomes : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-4 py-2 text-right text-slate-700">{m.calls > 0 ? m.calls : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-4 py-2 text-right text-slate-700">{m.emails > 0 ? m.emails : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-4 py-2 text-right text-slate-700">{m.tasksCompleted > 0 ? m.tasksCompleted : <span className="text-slate-300">—</span>}</td>
                 </tr>
               ))}
+              {/* Totals row */}
+              <tr className="border-t border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700">
+                <td className="px-4 py-2">6-month total</td>
+                <td className="px-4 py-2 text-right">{monthStats.reduce((s, m) => s + m.contacts, 0)}</td>
+                <td className="px-4 py-2 text-right">{monthStats.reduce((s, m) => s + m.appraisals, 0)}</td>
+                <td className="px-4 py-2 text-right">{monthStats.reduce((s, m) => s + m.openHomes, 0)}</td>
+                <td className="px-4 py-2 text-right">{monthStats.reduce((s, m) => s + m.calls, 0)}</td>
+                <td className="px-4 py-2 text-right">{monthStats.reduce((s, m) => s + m.emails, 0)}</td>
+                <td className="px-4 py-2 text-right">{monthStats.reduce((s, m) => s + m.tasksCompleted, 0)}</td>
+              </tr>
             </tbody>
           </table>
         </div>
