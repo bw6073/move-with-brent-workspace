@@ -312,6 +312,41 @@ export default async function HomePage() {
     (p: any) => !recentPropertyIds.has(p.id)
   );
 
+  // ── SUMMARY COUNTS ────────────────────
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const [
+    { count: totalContactCount },
+    { count: activeListingCount },
+    { count: appraisalsThisMonth },
+    { count: newContactsThisMonth },
+  ] = await Promise.all([
+    supabase
+      .from("contacts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .is("deleted_at", null),
+    supabase
+      .from("properties")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .in("market_status", ["for_sale", "under_offer", "pre_market"])
+      .is("deleted_at", null),
+    supabase
+      .from("appraisals")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gte("created_at", monthStart.toISOString()),
+    supabase
+      .from("contacts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .gte("created_at", monthStart.toISOString()),
+  ]);
+
   // ── OPEN HOMES SNAPSHOT ────────────────
   const { data: openHomeData, error: openHomeError } = await supabase
     .from("open_home_events")
@@ -399,6 +434,26 @@ export default async function HomePage() {
           </p>
         </div>
       </header>
+
+      {/* SUMMARY STAT STRIP */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Link href="/contacts" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Total contacts</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{totalContactCount ?? 0}</p>
+        </Link>
+        <Link href="/properties" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Active listings</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{activeListingCount ?? 0}</p>
+        </Link>
+        <Link href="/appraisals" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Appraisals this month</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{appraisalsThisMonth ?? 0}</p>
+        </Link>
+        <Link href="/contacts" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:bg-slate-50">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">New contacts this month</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{newContactsThisMonth ?? 0}</p>
+        </Link>
+      </div>
 
       {/* TODAY'S FOCUS */}
       {(overdueCount > 0 || todayCount > 0 || coldContactCount > 0 || staleListings.length > 0) && (
