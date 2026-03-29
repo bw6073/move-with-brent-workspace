@@ -271,20 +271,66 @@ export default async function HomePage() {
 
   const totalContacts = contactFunnelData?.length ?? 0;
 
-  // ── COLD CONTACTS COUNT ───────────────
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  // ── FOLLOW-UP REMINDERS (stage-aware) ─
+  // Thresholds: how many days before a contact needs follow-up
+  const STAGE_THRESHOLDS: Record<string, number> = {
+    active_opportunity: 7,
+    appraisal_booked: 3,
+    listed: 5,
+    new_enquiry: 14,
+    nurture: 30,
+    inactive: 60,
+  };
+  const DEFAULT_THRESHOLD = 30;
 
-  const { data: recentActivityData } = await supabase
-    .from("contact_activities")
-    .select("contact_id")
-    .eq("user_id", user.id)
-    .gte("activity_at", thirtyDaysAgo.toISOString());
+  const sixtyDaysAgo = new Date();
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
-  const recentlyContactedIds = new Set(
-    (recentActivityData ?? []).map((a: any) => a.contact_id)
-  );
-  const coldContactCount = Math.max(0, totalContacts - recentlyContactedIds.size);
+  const [{ data: followUpContactData }, { data: allRecentActivityData }] = await Promise.all([
+    supabase
+      .from("contacts")
+      .select("id, name, full_name, first_name, last_name, stage")
+      .eq("user_id", user.id)
+      .is("deleted_at", null)
+      .limit(500),
+    supabase
+      .from("contact_activities")
+      .select("contact_id, activity_at")
+      .eq("user_id", user.id)
+      .gte("activity_at", sixtyDaysAgo.toISOString())
+      .order("activity_at", { ascending: false }),
+  ]);
+
+  // Build map: contact_id → most recent activity timestamp
+  const lastActivityMap = new Map<number, Date>();
+  for (const a of allRecentActivityData ?? []) {
+    if (!lastActivityMap.has(a.contact_id)) {
+      lastActivityMap.set(a.contact_id, new Date(a.activity_at));
+    }
+  }
+
+  const nowMs = Date.now();
+  type FollowUpItem = { id: number; name: string; stage: string | null; daysAgo: number | null; threshold: number };
+
+  const followUpNeeded: FollowUpItem[] = (followUpContactData ?? [])
+    .map((c: any) => {
+      const displayName =
+        c.full_name || [c.first_name, c.last_name].filter(Boolean).join(" ") || c.name || "Unnamed";
+      const threshold = STAGE_THRESHOLDS[c.stage ?? ""] ?? DEFAULT_THRESHOLD;
+      const lastActivity = lastActivityMap.get(c.id);
+      const daysAgo = lastActivity ? Math.floor((nowMs - lastActivity.getTime()) / 86_400_000) : null;
+      const overdue = daysAgo === null || daysAgo >= threshold;
+      return overdue ? { id: c.id, name: displayName, stage: c.stage ?? null, daysAgo, threshold } : null;
+    })
+    .filter((x): x is FollowUpItem => x !== null)
+    .sort((a, b) => {
+      // Never contacted first, then by how overdue they are (daysAgo - threshold desc)
+      const aScore = a.daysAgo === null ? 9999 : a.daysAgo - a.threshold;
+      const bScore = b.daysAgo === null ? 9999 : b.daysAgo - b.threshold;
+      return bScore - aScore;
+    });
+
+  const coldContactCount = followUpNeeded.length;
 
   // ── STALE ACTIVE LISTINGS ─────────────
   const sevenDaysAgo = new Date();
@@ -530,25 +576,34 @@ export default async function HomePage() {
               )}
             </div>
 
-            {/* Cold contacts */}
+            {/* Follow-up reminders */}
             <div>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Going cold ({coldContactCount})
+                Needs follow-up ({coldContactCount})
               </p>
               {coldContactCount === 0 ? (
-                <p className="text-xs text-slate-500">All contacts touched recently.</p>
+                <p className="text-xs text-slate-500">All contacts are up to date.</p>
               ) : (
-                <div className="space-y-1">
-                  <p className="text-xs text-slate-600">
-                    {coldContactCount} contact{coldContactCount !== 1 ? "s" : ""} with no activity in 30+ days.
-                  </p>
-                  <Link
-                    href="/contacts?sort=last_contacted_asc"
-                    className="text-xs font-medium text-slate-700 hover:underline"
-                  >
-                    View who needs follow-up →
-                  </Link>
-                </div>
+                <ul className="space-y-1">
+                  {followUpNeeded.slice(0, 5).map((c) => (
+                    <li key={c.id} className="text-xs">
+                      <Link href={`/contacts/${c.id}`} className="font-medium text-slate-800 hover:underline">
+                        {c.name}
+                      </Link>
+                      <span className="ml-1 text-slate-400">
+                        {c.daysAgo === null ? "never contacted" : `${c.daysAgo}d ago`}
+                        {c.stage ? ` · ${c.stage.replace(/_/g, " ")}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                  {coldContactCount > 5 && (
+                    <li>
+                      <Link href="/contacts?sort=last_contacted_asc" className="text-xs text-slate-500 hover:underline">
+                        +{coldContactCount - 5} more →
+                      </Link>
+                    </li>
+                  )}
+                </ul>
               )}
             </div>
 
