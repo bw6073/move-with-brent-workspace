@@ -143,14 +143,15 @@ export function PropertiesTable({ properties }: Props) {
   const [sort, setSort] = useState<SortValue>("created_desc");
   const [page, setPage] = useState<number>(1);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
   const { pageItems, totalCount, fromIndex, totalPages } = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const filtered = q
-      ? properties.filter((p) =>
-          [p.address, p.suburb].some((s) => s?.toLowerCase().includes(q))
-        )
-      : properties;
+    const filtered = properties.filter((p) => {
+      if (q && !([p.address, p.suburb].some((s) => s?.toLowerCase().includes(q)))) return false;
+      if (statusFilter && p.status !== statusFilter) return false;
+      return true;
+    });
 
     const sorted = [...filtered].sort((a, b) => {
       const aAddress = (a.address || "").toLowerCase();
@@ -218,7 +219,7 @@ export function PropertiesTable({ properties }: Props) {
       fromIndex,
       totalPages,
     };
-  }, [properties, sort, page, search]);
+  }, [properties, sort, page, search, statusFilter]);
 
   const handleChangeSort = (value: SortValue) => {
     setSort(value);
@@ -238,9 +239,9 @@ export function PropertiesTable({ properties }: Props) {
 
   return (
     <>
-      {/* SEARCH + SORT + SUMMARY */}
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
+      {/* SEARCH + FILTERS + SORT */}
+      <div className="mb-3 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             type="search"
             value={search}
@@ -248,7 +249,33 @@ export function PropertiesTable({ properties }: Props) {
             placeholder="Search address or suburb…"
             className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs sm:text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 w-52"
           />
-          <p className="text-xs text-slate-500">
+
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs sm:text-sm"
+          >
+            <option value="">All statuses</option>
+            <option value="for_sale">For sale</option>
+            <option value="under_offer">Under offer</option>
+            <option value="sold">Sold</option>
+            <option value="pre_market">Pre market</option>
+            <option value="off_market">Off market</option>
+            <option value="appraisal">Appraisal</option>
+            <option value="withdrawn">Withdrawn</option>
+          </select>
+
+          {statusFilter && (
+            <button
+              type="button"
+              onClick={() => { setStatusFilter(""); setPage(1); }}
+              className="rounded-full border border-slate-300 px-3 py-1 text-xs text-slate-500 hover:bg-slate-50"
+            >
+              Clear filter
+            </button>
+          )}
+
+          <p className="text-xs text-slate-500 ml-auto">
             {totalCount} propert{totalCount === 1 ? "y" : "ies"} · Page {page}/{totalPages}
           </p>
         </div>
